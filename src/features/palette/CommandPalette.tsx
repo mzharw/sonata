@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
 import { useUi } from "../../stores/ui";
 import { sections } from "../search/views";
-import { TYPE_ICON, TYPE_LABEL } from "../../lib/typeIcons";
+import { CREATABLE_TYPES, TYPE_SPECS } from "../../lib/documentTypes";
 import { IconMaximize, IconRefresh, IconFolder } from "../../components/icons";
 import type { DocumentType } from "../../types/domain";
 
@@ -15,8 +15,6 @@ interface Command {
   run: () => void | Promise<unknown>;
 }
 
-const CREATABLE_TYPES: DocumentType[] = ["task", "note", "idea", "bookmark", "inbox"];
-
 export function CommandPalette({ close }: { close: () => void }) {
   const ui = useUi();
   const qc = useQueryClient();
@@ -25,7 +23,7 @@ export function CommandPalette({ close }: { close: () => void }) {
   const tags = useQuery({ queryKey: ["tags"], queryFn: native.tags });
 
   const create = async (type: DocumentType, mode: "inline" | "fullscreen" = "inline") => {
-    const doc = await native.createDocument({ type, title: `New ${TYPE_LABEL[type].toLowerCase()}`, body: "" });
+    const doc = await native.createDocument({ type, title: `New ${TYPE_SPECS[type].label.toLowerCase()}`, body: "" });
     qc.invalidateQueries({ queryKey: ["documents"] });
     if (mode === "fullscreen") ui.openFullScreen(doc.id);
     else ui.expand(doc.id);
@@ -34,8 +32,8 @@ export function CommandPalette({ close }: { close: () => void }) {
   const commands = useMemo<Command[]>(() => {
     const list: Command[] = CREATABLE_TYPES.map((t) => ({
       id: `new-${t}`,
-      label: `New ${TYPE_LABEL[t]}`,
-      icon: TYPE_ICON[t],
+      label: `New ${TYPE_SPECS[t].label}`,
+      icon: TYPE_SPECS[t].icon,
       run: () => create(t),
     }));
     list.push({ id: "new-note-fullscreen", label: "New note (full-screen)", icon: IconMaximize, run: () => create("note", "fullscreen") });

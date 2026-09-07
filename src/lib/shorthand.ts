@@ -1,15 +1,16 @@
-import type { DocumentType } from "../types/domain";
+import { TYPE_KEYWORDS } from "./documentTypes";
 
 /**
  * Autocomplete for the quick-add shorthand grammar:
  *
- *   [task|note|idea|bookmark] Title #tag @due:date
+ *   [task|todo|note|idea|bookmark] Title #tag @due:date
  *
  * Everything offered here has to be something the Rust `capture_input` parser actually
  * understands — suggesting e.g. "@due:next friday" would look helpful and then silently
  * store an unusable due date, so the date keywords below are exactly the ones
  * `markdown::resolve_due_keyword` resolves, plus already-resolved `YYYY-MM-DD` values
- * (which pass straight through).
+ * (which pass straight through). The type words come from the same registry the parser's
+ * alias table mirrors, so the two cannot drift.
  */
 export interface ShorthandSuggestion {
   /** Text that replaces the token being typed. */
@@ -26,12 +27,15 @@ export interface ShorthandMatch {
   items: ShorthandSuggestion[];
 }
 
-export const TYPE_KEYWORDS: DocumentType[] = ["task", "note", "idea", "bookmark"];
+/**
+ * Type words worth completing. `inbox` is excluded deliberately: it is where capture
+ * already lands, so typing it is never the shortest path to an inbox item.
+ */
+const SUGGESTED_TYPE_KEYWORDS = TYPE_KEYWORDS.filter((k) => k !== "inbox");
 
 /** The grammar reference shown from Quick Add with Ctrl+Space. */
 export const ALL_SHORTHAND_SUGGESTIONS: ShorthandSuggestion[] = [
-  ...TYPE_KEYWORDS.map((type) => ({ insert: type, label: type, hint: "type" })),
-  { insert: "todo", label: "todo", hint: "task type" },
+  ...SUGGESTED_TYPE_KEYWORDS.map((type) => ({ insert: type, label: type, hint: "type" })),
   { insert: "#tag", label: "#tag", hint: "tag" },
   { insert: "@due:today", label: "@due:today", hint: "due today" },
   { insert: "@due:tomorrow", label: "@due:tomorrow", hint: "due tomorrow" },
@@ -39,14 +43,10 @@ export const ALL_SHORTHAND_SUGGESTIONS: ShorthandSuggestion[] = [
   { insert: "@due:YYYY-MM-DD", label: "@due:YYYY-MM-DD", hint: "due date" },
 ];
 
-// The capture parser also reads "todo" as a task, so detection has to accept a
-// word the suggestion list never offers.
-const CAPTURE_TYPE_WORDS: string[] = [...TYPE_KEYWORDS, "todo"];
-
 /** Whether the text opens with a word the capture parser reads as a type. */
 export function opensWithTypeKeyword(text: string): boolean {
   const [first = ""] = text.trimStart().split(/\s+/, 1);
-  return CAPTURE_TYPE_WORDS.includes(first.toLowerCase());
+  return TYPE_KEYWORDS.includes(first.toLowerCase());
 }
 
 export function isoDate(offsetDays: number, from: Date = new Date()): string {
@@ -124,7 +124,7 @@ export function shorthandSuggestions(
   // isn't already pinned by the dropdown or the current view.
   if (options.offerTypes && start === 0 && token.length > 0) {
     const query = token.toLowerCase();
-    const items = TYPE_KEYWORDS.filter((k) => k.startsWith(query)).map((k) => ({
+    const items = SUGGESTED_TYPE_KEYWORDS.filter((k) => k.startsWith(query)).map((k) => ({
       insert: k,
       label: k,
       hint: "type",

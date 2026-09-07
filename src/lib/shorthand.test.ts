@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyShorthandSuggestion, isoDate, shorthandSuggestions } from "./shorthand";
+import { ALL_SHORTHAND_SUGGESTIONS, applyShorthandSuggestion, isoDate, opensWithTypeKeyword, shorthandSuggestions } from "./shorthand";
 
 const TAGS = [
   { tag: "errand", count: 4 },
@@ -103,5 +103,20 @@ describe("isoDate", () => {
     expect(isoDate(0, new Date(2026, 8, 30))).toBe("2026-09-30");
     expect(isoDate(1, new Date(2026, 8, 30))).toBe("2026-10-01");
     expect(isoDate(-1, new Date(2026, 0, 1))).toBe("2025-12-31");
+  });
+});
+
+describe("type keywords come from the registry", () => {
+  it("offers todo, which the capture parser has always accepted", () => {
+    expect(ALL_SHORTHAND_SUGGESTIONS.map((s) => s.insert)).toContain("todo");
+    expect(shorthandSuggestions("tod", 3, [], { offerTypes: true })?.items.map((i) => i.insert)).toEqual(["todo"]);
+    expect(opensWithTypeKeyword("todo Buy milk")).toBe(true);
+  });
+
+  it("never offers inbox, which is where capture already lands", () => {
+    expect(ALL_SHORTHAND_SUGGESTIONS.map((s) => s.insert)).not.toContain("inbox");
+    expect(shorthandSuggestions("inb", 3, [], { offerTypes: true })).toBeNull();
+    // Still recognized when typed, because the Rust parser accepts it.
+    expect(opensWithTypeKeyword("inbox Sort me")).toBe(true);
   });
 });

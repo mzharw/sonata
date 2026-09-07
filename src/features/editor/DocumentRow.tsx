@@ -10,7 +10,7 @@ import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/Mark
 import { AttachmentButton } from "../../components/AttachmentButton";
 import { attachToDocument, chooseAndImportAttachment, importClipboardImage } from "../../lib/attachments";
 import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
-import { TYPE_ICON } from "../../lib/typeIcons";
+import { TYPE_SPECS } from "../../lib/documentTypes";
 import { STATUS_OPTIONS } from "../../lib/statusOptions";
 import { renderMarkdownPreview } from "../../lib/renderMarkdown";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
@@ -42,7 +42,7 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
   const qc = useQueryClient();
   const expanded = ui.expandedId === doc.id;
   const { doc: full, setDoc: setFull, status: saveStatus, save } = useDocumentEditor(expanded ? doc.id : undefined);
-  const TypeIcon = TYPE_ICON[doc.type];
+  const TypeIcon = TYPE_SPECS[doc.type].icon;
   const bodyEditorRef = useRef<MarkdownEditorHandle>(null);
   const headerSentinelRef = useRef<HTMLSpanElement>(null);
   const [rawActive, setRawActive] = useState(false);

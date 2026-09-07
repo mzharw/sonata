@@ -3,26 +3,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
 import { useUi } from "../../stores/ui";
 import { sections } from "../search/views";
-import { TYPE_ICON, TYPE_LABEL } from "../../lib/typeIcons";
+import { DOCUMENT_TYPES, TYPE_SPECS, typeOptions } from "../../lib/documentTypes";
 import { TagChipInput } from "../../components/TagChipInput";
 import { DueDateField } from "../../components/DueDateField";
 import { PrioritySelect } from "../../components/PrioritySelect";
-import { IconDropdown, type DropdownOption } from "../../components/IconDropdown";
+import { IconDropdown } from "../../components/IconDropdown";
 import { IconChevronDown, IconChevronUp, IconMaximize, IconPlus } from "../../components/icons";
 import { ALL_SHORTHAND_SUGGESTIONS, applyShorthandSuggestion, opensWithTypeKeyword, shorthandSuggestions, type ShorthandSuggestion } from "../../lib/shorthand";
 import { CAPTURE_HOTKEY, NEW_NOTE_HOTKEY, hasMod } from "../../lib/hotkeys";
 import type { DocumentType, Priority } from "../../types/domain";
 
-const TYPE_PREFIX: Record<DocumentType, string> = {
-  inbox: "",
-  task: "task ",
-  note: "note ",
-  idea: "idea ",
-  bookmark: "bookmark ",
-};
-
-const DOCUMENT_TYPES: DocumentType[] = ["inbox", "task", "note", "idea", "bookmark"];
-const TYPE_OPTIONS: DropdownOption[] = DOCUMENT_TYPES.map((t) => ({ value: t, label: TYPE_LABEL[t], icon: TYPE_ICON[t] }));
+const TYPE_OPTIONS = typeOptions(DOCUMENT_TYPES);
 
 export function QuickAdd() {
   const ui = useUi();
@@ -45,7 +36,7 @@ export function QuickAdd() {
 
   const impliedType = sections.find(([view]) => view === ui.view)?.[2];
   const effectiveType = impliedType ?? type;
-  const ImpliedIcon = impliedType ? TYPE_ICON[impliedType] : undefined;
+  const ImpliedIcon = impliedType ? TYPE_SPECS[impliedType].icon : undefined;
 
   const knownTags = useQuery({ queryKey: ["tags"], queryFn: native.tags });
   // A leading "task"/"note"/… word stays meaningful whenever the dropdown is what
@@ -85,7 +76,7 @@ export function QuickAdd() {
   // The dropdown supplies a type only until the text names one itself — otherwise
   // "task Buy milk" under the default type would capture as "note task Buy milk"
   // and bury the word "task" in the title. A view-implied type still wins outright.
-  const capturePrefix = !impliedType && opensWithTypeKeyword(text) ? "" : TYPE_PREFIX[effectiveType];
+  const capturePrefix = !impliedType && opensWithTypeKeyword(text) ? "" : TYPE_SPECS[effectiveType].capturePrefix;
 
   const submitShorthand = async () => {
     if (!text.trim()) return;

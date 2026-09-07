@@ -6,7 +6,7 @@ import { IconFilter, IconCheck } from "../../components/icons";
 import type { Priority, SortOrder, TaskStatus } from "../../types/domain";
 
 const SORT_OPTIONS: Array<[SortOrder, string]> = [
-  ["default", "Due date"],
+  ["default", "Default for this view"],
   ["updated", "Recently updated"],
   ["created", "Recently created"],
   ["priority", "Priority"],
