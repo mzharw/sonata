@@ -195,8 +195,14 @@ pub fn create_document(
     doc.reminder = input.reminder;
     doc.parent = input.parent;
     doc.links = input.links;
+    doc.stage = input.stage.or(doc.stage);
     doc.bookmark = input.bookmark;
     doc.cover = input.cover;
+    // The spec is the authority on what a type carries, not the caller: "note Buy milk
+    // @due:tomorrow" stores a note with no due date rather than a note pretending to be a
+    // task. Rust enforcing it means the UI showing a stray control is a cosmetic bug, not
+    // a data one.
+    doc.retain_supported_fields();
     let raw = markdown::serialize(&doc)?;
     markdown::atomic_write(&path, &raw)?;
     doc.content_hash = Some(markdown::hash(&raw));
@@ -499,13 +505,9 @@ pub fn reveal_attachment_in_explorer(path: String, state: State<AppState>) -> Re
 fn capture_input(text: &str) -> DocumentInput {
     let mut words = text.split_whitespace();
     let prefix = words.next().unwrap_or("");
-    let kind = match prefix.to_lowercase().as_str() {
-        "todo" | "task" => Some(crate::domain::DocumentType::Task),
-        "note" => Some(crate::domain::DocumentType::Note),
-        "idea" => Some(crate::domain::DocumentType::Idea),
-        "bookmark" => Some(crate::domain::DocumentType::Bookmark),
-        _ => None,
-    };
+    // One alias table (`TypeSpec::keywords`) serves both this and the frontmatter parser,
+    // so capture can never accept a word the type list does not know about.
+    let kind = crate::domain::DocumentType::from_keyword(prefix);
     let rest = if kind.is_some() {
         words.collect::<Vec<_>>().join(" ")
     } else {
@@ -694,5 +696,26 @@ mod capture_tests {
         let input = capture_input("#errand");
         assert_eq!(input.title.as_deref(), Some("Untitled"));
         assert_eq!(input.tags, Some(vec!["errand".into()]));
+    }
+
+    /// The prefix aliases come from `TypeSpec::keywords`, so `todo` and any casing work
+    /// without a second hand-maintained match arm here.
+    #[test]
+    fn capture_prefixes_come_from_the_type_spec() {
+        for word in ["task", "todo", "TASK", "ToDo"] {
+            let input = capture_input(&format!("{word} Renew passport"));
+            assert_eq!(input.document_type, Some(DocumentType::Task), "for {word}");
+            assert_eq!(input.title.as_deref(), Some("Renew passport"));
+        }
+        assert_eq!(
+            capture_input("bookmark Read later").document_type,
+            Some(DocumentType::Bookmark)
+        );
+        // `inbox` is now a real keyword rather than falling through as body text.
+        let inbox = capture_input("inbox Sort me out");
+        assert_eq!(inbox.document_type, Some(DocumentType::Inbox));
+        assert_eq!(inbox.title.as_deref(), Some("Sort me out"));
+        // A word that is not a type stays part of the title.
+        assert_eq!(capture_input("journal Dear diary").document_type, None);
     }
 }

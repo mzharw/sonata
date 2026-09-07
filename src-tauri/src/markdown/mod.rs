@@ -1,5 +1,5 @@
 use crate::{
-    domain::{string_value, Bookmark, DocumentType, Priority, SonataDocument, TaskStatus},
+    domain::{string_value, Bookmark, DocumentType, IdeaStage, SonataDocument},
     errors::{Result, SonataError},
 };
 use chrono::{Duration, Local};
@@ -10,24 +10,12 @@ use std::{fs, path::Path};
 use ulid::Ulid;
 
 const KNOWN: &[&str] = &[
-    "id",
-    "type",
-    "title",
-    "tags",
-    "created",
-    "updated",
-    "archived",
-    "pinned",
-    "status",
-    "priority",
-    "due",
-    "reminder",
-    "parent",
-    "links",
-    "bookmark",
-    "cover",
-    "completed",
+    "id", "type", "title", "tags", "created", "updated", "archived", "pinned", "status", "stage",
+    "priority", "due", "reminder", "parent", "links", "bookmark", "cover",
 ];
+// `completed` is deliberately absent. KNOWN means "this key is represented by a struct
+// field"; nothing parses or re-serializes `completed`, so listing it here excluded it from
+// `unknown` and destroyed the key on the next write.
 pub fn now() -> String {
     Local::now().to_rfc3339()
 }
@@ -94,13 +82,12 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         map.get(Value::String(key.to_string()))
             .and_then(string_value)
     };
-    let document_type = match get("type").as_deref() {
-        Some("task") => DocumentType::Task,
-        Some("note") => DocumentType::Note,
-        Some("idea") => DocumentType::Idea,
-        Some("bookmark") => DocumentType::Bookmark,
-        _ => DocumentType::Inbox,
-    };
+    // An unrecognized or missing `type:` falls back to the default (inbox) rather than
+    // failing the parse, so a hand-written file is always readable.
+    let document_type = get("type")
+        .as_deref()
+        .and_then(DocumentType::from_keyword)
+        .unwrap_or_default();
     let id = get("id").unwrap_or_default();
     let title = get("title").unwrap_or_else(|| {
         Path::new(path)
@@ -126,6 +113,7 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         .unwrap_or(false);
     let status = get("status").and_then(|v| serde_yaml::from_str(&v).ok());
     let priority = get("priority").and_then(|v| serde_yaml::from_str(&v).ok());
+    let stage = get("stage").and_then(|v| serde_yaml::from_str::<IdeaStage>(&v).ok());
     let parent = get("parent").filter(|s| s != "null");
     let links = map
         .get(Value::String("links".into()))
@@ -154,6 +142,7 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         pinned,
         status,
         priority,
+        stage,
         due,
         reminder,
         parent,
@@ -172,10 +161,11 @@ pub fn new_document(
     body: String,
 ) -> SonataDocument {
     let timestamp = now();
+    let defaults = document_type.spec().defaults;
     SonataDocument {
         id: Ulid::new().to_string(),
         path,
-        document_type: document_type.clone(),
+        document_type,
         title,
         body,
         tags: vec![],
@@ -183,8 +173,9 @@ pub fn new_document(
         updated: timestamp,
         archived: false,
         pinned: false,
-        status: (document_type == DocumentType::Task).then_some(TaskStatus::Todo),
-        priority: Some(Priority::None),
+        status: defaults.status,
+        priority: defaults.priority,
+        stage: defaults.stage,
         due: None,
         reminder: None,
         parent: None,
@@ -205,7 +196,7 @@ pub fn serialize(document: &SonataDocument) -> Result<String> {
     put(
         &mut map,
         "type",
-        serde_yaml::to_value(&document.document_type)
+        serde_yaml::to_value(document.document_type)
             .map_err(|e| SonataError::InvalidMetadata(e.to_string()))?,
     );
     put(&mut map, "title", Value::String(document.title.clone()));
@@ -223,6 +214,13 @@ pub fn serialize(document: &SonataDocument) -> Result<String> {
         put(
             &mut map,
             "status",
+            serde_yaml::to_value(v).map_err(|e| SonataError::InvalidMetadata(e.to_string()))?,
+        );
+    }
+    if let Some(v) = &document.stage {
+        put(
+            &mut map,
+            "stage",
             serde_yaml::to_value(v).map_err(|e| SonataError::InvalidMetadata(e.to_string()))?,
         );
     }
@@ -317,6 +315,86 @@ mod tests {
         assert_eq!(
             slug("Build authentication flow!"),
             "build-authentication-flow"
+        );
+    }
+    /// `completed` used to sit in KNOWN with no struct field behind it, so it was filtered
+    /// out of `unknown` and silently destroyed on the next write.
+    #[test]
+    fn an_uninterpreted_completed_key_survives_a_write() {
+        let raw = "---\nid: 01ABC\ntype: task\ntitle: Hello\ncompleted: true\n---\n\nbody";
+        let doc = parse("tasks/hello.md", raw).unwrap();
+        assert!(serialize(&doc).unwrap().contains("completed: true"));
+    }
+    #[test]
+    fn stage_round_trips_in_frontmatter() {
+        let raw = "---\nid: 01ABC\ntype: idea\ntitle: Hello\nstage: developing\n---\n\nbody";
+        let doc = parse("ideas/hello.md", raw).unwrap();
+        assert_eq!(doc.stage, Some(IdeaStage::Developing));
+        assert!(serialize(&doc).unwrap().contains("stage: developing"));
+    }
+    /// Guards the fixed key order. `stage` is the idea-type analogue of `status`, so a
+    /// reader scanning frontmatter finds the lifecycle field in the same place either way.
+    #[test]
+    fn stage_is_written_between_status_and_priority() {
+        let mut doc = new_document(
+            "tasks/x.md".into(),
+            DocumentType::Task,
+            "X".into(),
+            String::new(),
+        );
+        doc.stage = Some(IdeaStage::Spark);
+        let raw = serialize(&doc).unwrap();
+        let status = raw.find("status:").expect("status written");
+        let stage = raw.find("stage:").expect("stage written");
+        let priority = raw.find("priority:").expect("priority written");
+        assert!(status < stage && stage < priority, "{raw}");
+    }
+    #[test]
+    fn new_documents_only_get_the_defaults_their_type_supports() {
+        let note = new_document(
+            "notes/x.md".into(),
+            DocumentType::Note,
+            "X".into(),
+            "".into(),
+        );
+        assert_eq!(note.status, None);
+        assert_eq!(note.priority, None);
+        assert_eq!(note.stage, None);
+
+        let task = new_document(
+            "tasks/x.md".into(),
+            DocumentType::Task,
+            "X".into(),
+            "".into(),
+        );
+        assert_eq!(task.status, Some(crate::domain::TaskStatus::Todo));
+        assert_eq!(task.priority, Some(crate::domain::Priority::None));
+        assert_eq!(task.stage, None);
+
+        let idea = new_document(
+            "ideas/x.md".into(),
+            DocumentType::Idea,
+            "X".into(),
+            "".into(),
+        );
+        assert_eq!(idea.stage, Some(IdeaStage::Spark));
+        assert_eq!(idea.status, None);
+    }
+    #[test]
+    fn an_unknown_type_value_falls_back_to_inbox() {
+        let raw = "---\nid: 01ABC\ntype: journal\ntitle: Hello\n---\n\nbody";
+        let doc = parse("inbox/hello.md", raw).unwrap();
+        assert_eq!(doc.document_type, DocumentType::Inbox);
+        // `type` is a known key, so the unrecognized spelling is not preserved: the file is
+        // rewritten as the type it actually parsed as.
+        assert!(serialize(&doc).unwrap().contains("type: inbox"));
+    }
+    #[test]
+    fn a_todo_type_keyword_parses_as_a_task() {
+        let raw = "---\nid: 01ABC\ntype: todo\ntitle: Hello\n---\n\nbody";
+        assert_eq!(
+            parse("tasks/hello.md", raw).unwrap().document_type,
+            DocumentType::Task
         );
     }
 }
