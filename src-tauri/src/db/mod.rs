@@ -230,6 +230,7 @@ fn row_doc(r: &rusqlite::Row<'_>) -> rusqlite::Result<SonataDocument> {
         parent: r.get(9)?,
         links: None,
         bookmark: None,
+        cover: None,
         content_hash: r.get(13)?,
         unknown: Default::default(),
     })

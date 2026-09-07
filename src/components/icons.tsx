@@ -44,6 +44,7 @@ export const IconQuote = (props: IconProps) => <svg {...base(props)}><path d="M7
 export const IconEye = (props: IconProps) => <svg {...base(props)}><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" /><circle cx="12" cy="12" r="3" /></svg>;
 export const IconPencilLine = (props: IconProps) => <svg {...base(props)}><path d="M4 20h16" /><path d="M14.5 4.5 18 8 8 18H4.5v-3.5Z" /></svg>;
 export const IconPencil = (props: IconProps) => <svg {...base(props)}><path d="M14.5 4.5 18 8 8 18H4.5v-3.5Z" /></svg>;
+export const IconImagePlus = (props: IconProps) => <svg {...base(props)}><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="8.5" cy="9" r="1.5" /><path d="m4 17 5-5 3.5 3.5 2.5-2.5L20 18M17 7v4M15 9h4" /></svg>;
 // Status glyphs are self-contained: sub-shapes hardcode their own fill so callers can safely
 // pass fill="currentColor" (e.g. IconDropdown does this for any option with a colorVar) without
 // turning an open stroke path (like a checkmark) into a filled wedge blob.

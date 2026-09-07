@@ -28,6 +28,17 @@ export interface ShorthandMatch {
 
 export const TYPE_KEYWORDS: DocumentType[] = ["task", "note", "idea", "bookmark"];
 
+/** The grammar reference shown from Quick Add with Ctrl+Space. */
+export const ALL_SHORTHAND_SUGGESTIONS: ShorthandSuggestion[] = [
+  ...TYPE_KEYWORDS.map((type) => ({ insert: type, label: type, hint: "type" })),
+  { insert: "todo", label: "todo", hint: "task type" },
+  { insert: "#tag", label: "#tag", hint: "tag" },
+  { insert: "@due:today", label: "@due:today", hint: "due today" },
+  { insert: "@due:tomorrow", label: "@due:tomorrow", hint: "due tomorrow" },
+  { insert: "@due:yesterday", label: "@due:yesterday", hint: "due yesterday" },
+  { insert: "@due:YYYY-MM-DD", label: "@due:YYYY-MM-DD", hint: "due date" },
+];
+
 // The capture parser also reads "todo" as a task, so detection has to accept a
 // word the suggestion list never offers.
 const CAPTURE_TYPE_WORDS: string[] = [...TYPE_KEYWORDS, "todo"];

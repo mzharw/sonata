@@ -133,7 +133,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
    between rows instead of underlining the one above. Drawn as a pseudo-element
    rather than a border so the row can keep its 9px radius for the expanded
    card while the rule itself stays square across the full width. */
-.doc{border-radius:9px;position:relative;padding-bottom:7px}
+.doc{border-radius:9px;position:relative;padding-bottom:7px;cursor:pointer}
 .doc::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:color-mix(in srgb,var(--border) 32%,transparent)}
 /* An open or previewing row owns a filled card, which supplies its own edge. */
 .doc:last-child::after,.doc.expanded::after,.doc.previewing::after{display:none}
@@ -149,6 +149,20 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .doc.is-active::before{content:"";position:absolute;left:0;top:7px;bottom:14px;width:2px;border-radius:0 2px 2px 0;background:var(--accent);opacity:.5}
 .doc.is-active.expanded::before,.doc.is-active.previewing::before{display:none}
 .doc.expanded .doc-row,.doc.expanded .doc-row:hover,.doc.previewing .doc-row,.doc.previewing .doc-row:hover{background:transparent}
+/* The marker tells the row when its normal position has crossed the list
+   scrollport. That scrollport begins directly under the tag chips, or under
+   the top bar when the chips are absent, so a docked title never overlaps
+   either. */
+.doc-header-sentinel{position:absolute;top:0;left:0;width:1px;height:1px;pointer-events:none}
+/* Keep the document heading available while its editor scrolls, without
+   pinning the cover or the complete expanded item. The row only receives the
+   docked treatment after its original position has scrolled out of view. */
+.doc.expanded .doc-row.is-sticky{position:sticky;top:-14px;z-index:2;margin:0 -14px;padding:10px 14px;border-radius:0;background:var(--bg-alt)}
+.doc.expanded .doc-row.is-sticky:hover{background:var(--bg-alt)}
+/* Fade the editor beneath a docked heading rather than cutting it off with a
+   hard edge. It is visual only, so controls and links keep their normal hit
+   targets as they scroll through the transition. */
+.doc.expanded .doc-row.is-sticky::after{content:"";position:absolute;top:100%;left:0;right:0;height:24px;pointer-events:none;background:linear-gradient(to bottom,var(--bg-alt) 0%,color-mix(in srgb,var(--bg-alt) 82%,transparent) 18%,color-mix(in srgb,var(--bg-alt) 54%,transparent) 52%,color-mix(in srgb,var(--bg-alt) 20%,transparent) 78%,transparent 100%)}
 .doc-main{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:2px;background:none;border:0;padding:0;text-align:left;font:inherit;cursor:pointer}
 .doc-main b{display:block;font-size:14px;font-weight:540;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .doc-main b.is-completed{color:var(--muted);font-weight:500;text-decoration:line-through}
@@ -180,9 +194,12 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .check{color:var(--check);width:26px;height:26px;display:inline-grid;place-items:center;flex:none;padding:0}
 .doc-type-note .check,.doc-type-idea .check,.doc-type-bookmark .check,.doc-type-inbox .check{color:var(--muted-soft)}
 
-.doc-preview{position:relative;max-height:0;overflow:hidden;transition:max-height .18s ease}
-.doc-preview.expanded{max-height:200px;border-top:1px solid var(--border-strong)}
+.doc-preview{position:relative;max-height:0;overflow:hidden;transition:max-height .18s ease;cursor:pointer}
+.doc-preview.expanded{max-height:none;border-top:1px solid var(--border-strong)}
+.doc-preview.expanded.truncated{max-height:200px}
 .doc-preview .md-prose{padding:14px 20px 18px;font-size:13px;-webkit-mask-image:linear-gradient(to bottom,#000 75%,transparent 100%);mask-image:linear-gradient(to bottom,#000 75%,transparent 100%)}
+.doc-preview.expanded:not(.truncated) .md-prose{-webkit-mask-image:none;mask-image:none}
+.doc-preview.expanded.truncated::after{content:"Click to see more";position:absolute;left:0;right:0;bottom:0;display:flex;align-items:flex-end;justify-content:center;height:72px;padding:0 14px 12px;color:var(--muted);font-size:11px;font-weight:600;background:linear-gradient(to bottom,transparent,color-mix(in srgb,var(--bg-alt) 92%,transparent));backdrop-filter:blur(1px);pointer-events:none}
 
 .empty{color:var(--muted);margin:30px 14px;font-size:14px;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
 
@@ -192,8 +209,15 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 /* Says the heading is editable on hover, then gets out of the way the moment
    the caret lands in it. */
 .editor-title-pen{position:absolute;right:2px;opacity:0;pointer-events:none;color:var(--muted-soft);transition:opacity .12s}
-.editor-title-wrap:hover .editor-title-pen{opacity:1}
-.editor-title-wrap:focus-within .editor-title-pen{opacity:0}
+.editor-title-wrap:hover .editor-title-pen,.fs-title-wrap:hover .editor-title-pen{opacity:1}
+.editor-title-wrap:focus-within .editor-title-pen,.fs-title-wrap:focus-within .editor-title-pen{opacity:0}
+.note-cover{position:relative;display:grid;place-items:center;width:100%;height:96px;overflow:hidden;border:1px dashed var(--border-strong);border-radius:0 0 9px 9px;margin:0 0 14px;background:var(--hover)}
+.editor .note-cover{width:calc(100% + 40px);margin:-14px 0 14px -20px}
+.editor .note-cover{border-radius:0}
+.editor .note-cover + .editor-title-wrap{position:relative;margin:-10px -20px 16px;padding:14px 20px 0;border-radius:12px 12px 0 0;background:var(--bg-alt)}
+.note-cover img{width:100%;height:100%;object-fit:cover}
+.note-cover-attach{position:absolute;inset:0;margin:auto;width:32px;height:32px;color:var(--muted-soft);background:color-mix(in srgb,var(--bg) 82%,transparent);border-radius:999px;opacity:0;transition:opacity .12s,background .12s}
+.note-cover:hover .note-cover-attach,.note-cover:focus-within .note-cover-attach{opacity:1;background:var(--bg)}
 /* Status, priority, due date and tags on one line of pills. Each control
    already states its own empty value, so no field labels are needed. */
 .meta-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-bottom:12px}
@@ -293,9 +317,12 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 
 .fullscreen-editor{position:fixed;inset:0;background:var(--bg);z-index:30;display:flex;flex-direction:column}
 .fullscreen-editor .fs-topbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border-strong)}
+.fullscreen-editor .fs-title-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:0}
 .fullscreen-editor .fs-topbar input{flex:1;border:0;outline:0;background:transparent;font:500 20px Georgia,serif;padding:5px 0;color:inherit}
+.fs-title-wrap .editor-title-pen{right:2px}
 .fullscreen-editor .fs-title-placeholder{color:var(--muted);font-size:14px}
 .fullscreen-editor .fs-body{flex:1;display:flex;flex-direction:column;padding:16px;overflow:auto;max-width:900px;width:100%;margin:0 auto;min-height:0}
+.fullscreen-editor .fs-body .note-cover{width:calc(100% + 32px);margin:-16px 0 14px -16px}
 .fullscreen-editor .md-editor-shell{flex:1;min-height:0}
 .fullscreen-editor .md-blocks{flex:1;overflow:auto}
 .fullscreen-editor .md-editor-all{flex:1;min-height:0}

@@ -40,6 +40,9 @@ pub struct SidebarState(pub Mutex<SidebarTransition>);
 pub struct SidebarTransition {
     pub is_open: bool,
     pub is_resizing: bool,
+    /// A native file/folder dialog has focus. Auto-hide must pause until the
+    /// pointer has returned to the panel after the dialog closes.
+    pub is_picker_open: bool,
     /// Set once the user drags the edge. `None` means "follow the monitor",
     /// so a display or scaling change is picked up instead of carried over.
     pub width: Option<u32>,
@@ -243,6 +246,26 @@ pub fn set_resizing(app: &AppHandle, resizing: bool) {
     };
 }
 
+/// Pauses auto-hide while a native file or folder picker is active. Starting
+/// the pause also cancels an already-queued conceal animation.
+pub fn set_picker_open(app: &AppHandle, picker_open: bool) {
+    let sidebar = app.state::<SidebarState>();
+    if let Ok(mut state) = sidebar.0.lock() {
+        if picker_open && !state.is_picker_open {
+            state.generation += 1;
+        }
+        state.is_picker_open = picker_open;
+    };
+    // Tauri parents the Windows picker to this window. A topmost parent can
+    // keep the cursor in the WebView's hit-test path when the picker was
+    // opened from Enter/Space (which has no mouse event to refresh it). Let
+    // the native dialog own the normal z-order until it closes.
+    #[cfg(windows)]
+    if let Ok(main) = main_window(app) {
+        let _ = main.set_always_on_top(!picker_open);
+    }
+}
+
 fn main_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     app.get_webview_window("main")
         .ok_or_else(|| tauri::Error::AssetNotFound("main window".into()))
@@ -271,6 +294,9 @@ fn start_windows_edge_monitor(app: AppHandle) {
     thread::spawn(move || {
         let mut was_in_activation_zone = false;
         let mut left_panel_at: Option<std::time::Instant> = None;
+        // Leaving to select a file is intentional. Keep the panel up until
+        // the pointer returns to it, then resume the normal leave behavior.
+        let mut waiting_for_panel_reentry = false;
         loop {
             let pointer = app.primary_monitor().ok().flatten().and_then(|monitor| {
                 let mut point = POINT { x: 0, y: 0 };
@@ -311,9 +337,9 @@ fn start_windows_edge_monitor(app: AppHandle) {
             // the pointer is still visually at the right edge.  Cursor
             // geometry gives the panel a continuous hit area instead.
             let sidebar = app.state::<SidebarState>();
-            let (is_open, is_resizing) = {
+            let (is_open, is_resizing, is_picker_open) = {
                 let state = sidebar.0.lock().expect("sidebar state lock");
-                (state.is_open, state.is_resizing)
+                (state.is_open, state.is_resizing, state.is_picker_open)
             };
             if is_open && !is_resizing {
                 let panel_width = main_window(&app)
@@ -326,7 +352,15 @@ fn start_windows_edge_monitor(app: AppHandle) {
                         cursor_x >= right - panel_width - RESIZE_TOLERANCE && cursor_x < right
                     })
                     .unwrap_or(false);
-                if within_panel || in_activation_zone {
+                if is_picker_open {
+                    // The dialog owns the pointer while it is open. Require a
+                    // deliberate return to Sonata before auto-hide can resume.
+                    waiting_for_panel_reentry = true;
+                    left_panel_at = None;
+                } else if within_panel || in_activation_zone {
+                    left_panel_at = None;
+                    waiting_for_panel_reentry = false;
+                } else if waiting_for_panel_reentry {
                     left_panel_at = None;
                 } else if let Some(left_at) = left_panel_at {
                     if left_at.elapsed() >= LEAVE_DELAY {

@@ -72,6 +72,7 @@ pub fn run() {
             commands::hide_sidebar,
             commands::resize_sidebar,
             commands::set_sidebar_resizing,
+            commands::set_sidebar_picker_open,
             commands::list_documents,
             commands::read_document,
             commands::create_document,
@@ -84,7 +85,11 @@ pub fn run() {
             commands::list_children,
             commands::list_backlinks,
             commands::rebuild_index,
-            commands::quick_capture
+            commands::quick_capture,
+            commands::import_attachment,
+            commands::import_clipboard_image,
+            commands::read_attachment,
+            commands::reveal_attachment_in_explorer
         ])
         .run(tauri::generate_context!())
         .expect("Sonata failed to run");

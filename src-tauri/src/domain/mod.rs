@@ -79,6 +79,8 @@ pub struct SonataDocument {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bookmark: Option<Bookmark>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub cover: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content_hash: Option<String>,
     #[serde(skip)]
     pub unknown: Mapping,
@@ -135,6 +137,7 @@ pub struct DocumentInput {
     pub parent: Option<String>,
     pub links: Option<Vec<String>>,
     pub bookmark: Option<Bookmark>,
+    pub cover: Option<String>,
 }
 
 pub fn string_value(value: &Value) -> Option<String> {

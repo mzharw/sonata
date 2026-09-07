@@ -1,7 +1,7 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ComponentType, type KeyboardEvent, type ReactNode, type SyntheticEvent } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentType, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type SyntheticEvent } from "react";
 import { marked, type Token } from "marked";
 import DOMPurify from "dompurify";
-import { IconEye, IconHelp, IconHeading, IconListBullets, IconCheckSquare } from "./icons";
+import { IconEye, IconHelp, IconHeading, IconListBullets, IconCheckSquare, IconImagePlus } from "./icons";
 import {
   COMMANDS,
   matchHotkey,
@@ -17,16 +17,24 @@ import {
 } from "../lib/mdCommands";
 import { getCaretCoordinates } from "../lib/caretPosition";
 import { ShorthandMenu, type MenuAnchor } from "./ShorthandMenu";
+import type { Attachment } from "../types/domain";
 
 const MD_OPTS = { gfm: true, breaks: true } as const;
 
-function renderTokensHtml(tokens: Token[]): string {
+function renderTokensHtml(tokens: Token[], attachmentUrls: Record<string, string> = {}): string {
   if (tokens.length === 0) return "";
   const html = marked.parser(tokens, MD_OPTS) as string;
   // marked always renders GFM task-list checkboxes as `disabled` — strip that so they're
   // actually clickable straight from the preview, without needing to enter edit mode first.
   const interactive = html.replace(/<input\b([^>]*?)\sdisabled(?:="")?([^>]*)>/g, "<input$1$2>");
-  return DOMPurify.sanitize(interactive);
+  const withLocalImages = interactive.replace(/(src=")(attachments\/[A-Za-z0-9_./-]+)(")/g, (_all, before: string, path: string, after: string) => `${before}${attachmentUrls[path] ?? path}${after}`);
+  return DOMPurify.sanitize(withLocalImages);
+}
+
+function attachmentPathFromTarget(target: EventTarget | null): string | undefined {
+  if (!(target instanceof Element)) return undefined;
+  const href = target.closest("a")?.getAttribute("href");
+  return href?.match(/^attachments\/[A-Za-z0-9_./-]+$/) ? href : undefined;
 }
 
 /**
@@ -57,11 +65,13 @@ function BlockPreview({
   ariaLabel,
   onActivate,
   onToggleTask,
+  onOpenAttachment,
 }: {
   html: string;
   ariaLabel: string;
   onActivate: () => void;
   onToggleTask?: (index: number) => void;
+  onOpenAttachment?: (path: string) => void;
 }) {
   const proseRef = useRef<HTMLDivElement>(null);
   return (
@@ -72,6 +82,13 @@ function BlockPreview({
       aria-label={`Edit ${ariaLabel}`}
       onClick={(e) => {
         const target = e.target as HTMLElement;
+        const attachmentPath = attachmentPathFromTarget(target);
+        if (attachmentPath && onOpenAttachment) {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenAttachment(attachmentPath);
+          return;
+        }
         if (onToggleTask && target instanceof HTMLInputElement && target.type === "checkbox") {
           e.stopPropagation();
           const boxes = Array.from(proseRef.current?.querySelectorAll('input[type="checkbox"]') ?? []);
@@ -88,7 +105,11 @@ function BlockPreview({
         }
       }}
     >
-      <div ref={proseRef} className="md-prose" dangerouslySetInnerHTML={{ __html: html }} />
+      <div
+        ref={proseRef}
+        className="md-prose"
+        dangerouslySetInnerHTML={{ __html: html }}
+      />
     </div>
   );
 }
@@ -118,6 +139,18 @@ const QUICK_START: Array<{ id: string; label: string; icon: ComponentType<{ size
   { id: "bullet", label: "Bullet list", icon: IconListBullets, seed: "- " },
   { id: "checklist", label: "Checklist", icon: IconCheckSquare, seed: "- [ ] " },
 ];
+
+const ATTACHMENT_COMMAND: Command = {
+  id: "attachment",
+  label: "Attach file",
+  icon: IconImagePlus,
+  example: "Choose a file to insert",
+  keywords: ["file", "image", "upload", "media"],
+  // Attachment import is handled by the editor's owner because it needs the
+  // current document id. This identity result only satisfies the shared menu
+  // command shape; insertSlashCommand handles this id before calling apply.
+  apply: (value, selection) => ({ value, ...selection }),
+};
 
 function EmptyPlaceholder({
   ariaLabel,
@@ -199,7 +232,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
   ariaLabel: string;
   /** Reports whether "edit whole document as text" mode is active, e.g. so a caller can render its own toggle button (see DocumentRow/FullScreenEditor). */
   onRawChange?: (raw: boolean) => void;
-}>(function MarkdownEditor({ value, onChange, onBlur, placeholder, ariaLabel, onRawChange }, ref) {
+  attachmentUrls?: Record<string, string>;
+  onAttach?: () => void;
+  onPasteImage?: (image: File) => Promise<Attachment>;
+  onOpenAttachment?: (path: string) => void;
+}>(function MarkdownEditor({ value, onChange, onBlur, placeholder, ariaLabel, onRawChange, attachmentUrls, onAttach, onPasteImage, onOpenAttachment }, ref) {
   const [segment, setSegment] = useState<Segment>(null);
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -218,7 +255,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
   const tokens = useMemo(() => marked.lexer(value, MD_OPTS), [value]);
   const blockRanges = useMemo(() => computeBlockRanges(value, tokens), [value, tokens]);
   const isEmpty = value.trim() === "";
-  const slashItems = useMemo(() => filterCommands(slashQuery), [slashQuery]);
+  const slashItems = useMemo(() => {
+    const commands = filterCommands(slashQuery);
+    const query = slashQuery.trim().toLowerCase();
+    const attachmentMatches = !query || ATTACHMENT_COMMAND.label.toLowerCase().includes(query) || ATTACHMENT_COMMAND.keywords?.some((keyword) => keyword.includes(query));
+    return onAttach && attachmentMatches ? [ATTACHMENT_COMMAND, ...commands] : commands;
+  }, [onAttach, slashQuery]);
 
   useLayoutEffect(() => {
     const ta = textareaRef.current;
@@ -263,9 +305,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
     setSegment({
       kind: "block",
       prefixRaw: value.slice(0, start),
-      prefixHtml: renderTokensHtml(tokens.slice(0, index)),
+      prefixHtml: renderTokensHtml(tokens.slice(0, index), attachmentUrls),
       suffixRaw: value.slice(end),
-      suffixHtml: renderTokensHtml(tokens.slice(index + 1)),
+      suffixHtml: renderTokensHtml(tokens.slice(index + 1), attachmentUrls),
     });
     setDraft(value.slice(start, end));
   };
@@ -359,6 +401,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
     if (!ta) return;
     const caret = ta.selectionStart;
     const withoutSlash = draft.slice(0, slashAnchor) + draft.slice(caret);
+    if (command.id === ATTACHMENT_COMMAND.id && onAttach) {
+      handleDraftChange(withoutSlash);
+      pendingSelection.current = { start: slashAnchor, end: slashAnchor };
+      setSlashOpen(false);
+      scheduleRestoreSelection();
+      onAttach();
+      return;
+    }
     const result = command.apply(withoutSlash, { start: slashAnchor, end: slashAnchor });
     handleDraftChange(result.value);
     pendingSelection.current = { start: result.start, end: result.end };
@@ -372,6 +422,23 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
     handleDraftChange(next);
     if (helpOpen) setHelpOpen(false);
     updateSlashState(next, caret);
+  };
+
+  const onTextareaPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!onPasteImage) return;
+    const image = Array.from(e.clipboardData.files).find((file) => file.type.startsWith("image/"))
+      ?? Array.from(e.clipboardData.items).find((item) => item.type.startsWith("image/"))?.getAsFile();
+    if (!image) return;
+
+    e.preventDefault();
+    const { selectionStart: start, selectionEnd: end } = e.currentTarget;
+    void onPasteImage(image).then((attachment) => {
+      const reference = `![${attachment.name}](${attachment.path})`;
+      const next = `${draft.slice(0, start)}${reference}${draft.slice(end)}`;
+      handleDraftChange(next);
+      pendingSelection.current = { start: start + reference.length, end: start + reference.length };
+      scheduleRestoreSelection();
+    }).catch(() => undefined);
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -456,6 +523,13 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
 
   const shell = (content: ReactNode) => <div className="md-editor-shell">{content}</div>;
 
+  const openAttachmentFromFrozenPreview = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const attachmentPath = attachmentPathFromTarget(event.target);
+    if (!attachmentPath || !onOpenAttachment) return;
+    event.preventDefault();
+    onOpenAttachment(attachmentPath);
+  };
+
   if (segment) {
     const surface = (
       <div className={`md-editor${segment.kind === "all" ? " md-editor-all" : ""}`}>
@@ -477,6 +551,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
             );
           })}
           <span className="md-toolbar-spacer" />
+          {onAttach && (
+            <button type="button" className="icon-btn" title="Attach file" aria-label="Attach file" onMouseDown={(e) => e.preventDefault()} onClick={onAttach}>
+              <IconImagePlus size={15} />
+            </button>
+          )}
           <button
             ref={helpBtnRef}
             type="button"
@@ -500,6 +579,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
           placeholder={placeholder}
           onChange={onTextareaChange}
           onKeyDown={onKeyDown}
+          onPaste={onTextareaPaste}
           onSelect={syncSlashOnCaretMove}
           onBlur={commit}
         />
@@ -525,9 +605,9 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
     if (segment.kind === "all") return shell(surface);
     return shell(
       <>
-        {segment.prefixHtml && <div className="md-prose md-block-frozen" dangerouslySetInnerHTML={{ __html: segment.prefixHtml }} />}
+        {segment.prefixHtml && <div className="md-prose md-block-frozen" onClick={openAttachmentFromFrozenPreview} dangerouslySetInnerHTML={{ __html: segment.prefixHtml }} />}
         {surface}
-        {segment.suffixHtml && <div className="md-prose md-block-frozen" dangerouslySetInnerHTML={{ __html: segment.suffixHtml }} />}
+        {segment.suffixHtml && <div className="md-prose md-block-frozen" onClick={openAttachmentFromFrozenPreview} dangerouslySetInnerHTML={{ __html: segment.suffixHtml }} />}
       </>,
     );
   }
@@ -543,10 +623,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
   if (!blockRanges) {
     return shell(
       <BlockPreview
-        html={renderTokensHtml(tokens)}
+        html={renderTokensHtml(tokens, attachmentUrls)}
         ariaLabel={ariaLabel}
         onActivate={() => activateAll()}
         onToggleTask={(idx) => onChange(toggleNthTaskItem(value, idx))}
+        onOpenAttachment={onOpenAttachment}
       />,
     );
   }
@@ -559,10 +640,11 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
         ) : (
           <BlockPreview
             key={i}
-            html={renderTokensHtml([token])}
+            html={renderTokensHtml([token], attachmentUrls)}
             ariaLabel={ariaLabel}
             onActivate={() => activateBlock(i)}
             onToggleTask={(idx) => toggleTaskInBlock(i, idx)}
+            onOpenAttachment={onOpenAttachment}
           />
         ),
       )}

@@ -155,3 +155,13 @@ it("still offers type keywords under the default type", async () => {
   const options = await screen.findAllByRole("option");
   expect(options.map((o) => o.textContent)).toContain("tasktype");
 });
+
+it("shows the complete shorthand reference with Ctrl+Space", async () => {
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  fireEvent.focus(input);
+  fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true });
+
+  expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual(expect.arrayContaining(["tasktype", "#tagtag", "@due:YYYY-MM-DDdue date"]));
+});

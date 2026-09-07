@@ -6,13 +6,89 @@ use crate::{
     workspace::Workspace,
 };
 use serde::Serialize;
-use std::{fs, path::PathBuf, sync::Mutex};
+#[cfg(windows)]
+use std::process::Command;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 use tauri::{AppHandle, Emitter, State};
 pub struct Session {
     pub workspace: Workspace,
     pub index: Index,
 }
 pub struct AppState(pub Mutex<Option<Session>>);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Attachment {
+    path: String,
+    name: String,
+    media_type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    data_url: Option<String>,
+}
+
+fn attachment_path(workspace: &Workspace, relative: &str) -> Result<PathBuf> {
+    let relative_path = Path::new(relative);
+    if relative_path.is_absolute() || !relative_path.starts_with("attachments") {
+        return Err(SonataError::PermissionDenied(
+            "attachment is outside the workspace attachments folder".into(),
+        ));
+    }
+    let target = workspace.root.join(relative_path).canonicalize()?;
+    let root = workspace.root.join("attachments").canonicalize()?;
+    if !target.starts_with(&root) {
+        return Err(SonataError::PermissionDenied(
+            "attachment is outside the workspace attachments folder".into(),
+        ));
+    }
+    Ok(target)
+}
+
+fn media_type(path: &Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "svg" => "image/svg+xml",
+        "pdf" => "application/pdf",
+        "txt" => "text/plain",
+        _ => "application/octet-stream",
+    }
+}
+
+fn attachment_details(relative: String, target: &Path) -> Result<Attachment> {
+    let media_type = media_type(target).to_string();
+    let data_url = media_type
+        .starts_with("image/")
+        .then(|| {
+            let data = fs::read(target)?;
+            Ok::<_, SonataError>(format!(
+                "data:{media_type};base64,{}",
+                base64::Engine::encode(&base64::engine::general_purpose::STANDARD, data)
+            ))
+        })
+        .transpose()?;
+    Ok(Attachment {
+        name: target
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("attachment")
+            .to_string(),
+        path: relative,
+        media_type,
+        data_url,
+    })
+}
 #[tauri::command]
 pub fn show_sidebar(app: AppHandle) -> Result<()> {
     crate::windows::sidebar::reveal(&app)
@@ -31,6 +107,11 @@ pub fn resize_sidebar(width: u32, app: AppHandle) -> Result<()> {
 #[tauri::command]
 pub fn set_sidebar_resizing(resizing: bool, app: AppHandle) -> Result<()> {
     crate::windows::sidebar::set_resizing(&app, resizing);
+    Ok(())
+}
+#[tauri::command]
+pub fn set_sidebar_picker_open(picker_open: bool, app: AppHandle) -> Result<()> {
+    crate::windows::sidebar::set_picker_open(&app, picker_open);
     Ok(())
 }
 fn session<'a>(state: &'a AppState) -> Result<std::sync::MutexGuard<'a, Option<Session>>> {
@@ -115,6 +196,7 @@ pub fn create_document(
     doc.parent = input.parent;
     doc.links = input.links;
     doc.bookmark = input.bookmark;
+    doc.cover = input.cover;
     let raw = markdown::serialize(&doc)?;
     markdown::atomic_write(&path, &raw)?;
     doc.content_hash = Some(markdown::hash(&raw));
@@ -271,6 +353,143 @@ pub fn quick_capture(
     app: AppHandle,
 ) -> Result<SonataDocument> {
     create_document(capture_input(&text), state, app)
+}
+#[tauri::command]
+pub fn import_attachment(
+    document_id: String,
+    source_path: String,
+    state: State<AppState>,
+) -> Result<Attachment> {
+    let guard = session(&state)?;
+    let s = guard.as_ref().unwrap();
+    s.index.get(&document_id)?;
+    if document_id.is_empty()
+        || !document_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err(SonataError::InvalidMetadata(
+            "document ID cannot be used for an attachment path".into(),
+        ));
+    }
+    let source = PathBuf::from(source_path);
+    if !source.is_file() {
+        return Err(SonataError::InvalidMetadata(
+            "selected attachment is not a file".into(),
+        ));
+    }
+    let file_name = source
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| SonataError::InvalidMetadata("attachment has an invalid filename".into()))?;
+    let safe_name: String = file_name
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_') {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let directory = s.workspace.root.join("attachments").join(&document_id);
+    fs::create_dir_all(&directory)?;
+    let mut target = directory.join(&safe_name);
+    let stem = Path::new(&safe_name)
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .unwrap_or("attachment");
+    let extension = Path::new(&safe_name)
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(|extension| format!(".{extension}"))
+        .unwrap_or_default();
+    let mut suffix = 2;
+    while target.exists() {
+        target = directory.join(format!("{stem}-{suffix}{extension}"));
+        suffix += 1;
+    }
+    fs::copy(source, &target)?;
+    let relative = s.workspace.relative(&target)?;
+    attachment_details(relative, &target)
+}
+#[tauri::command]
+pub fn import_clipboard_image(
+    document_id: String,
+    media_type: String,
+    data_base64: String,
+    state: State<AppState>,
+) -> Result<Attachment> {
+    let extension = match media_type.as_str() {
+        "image/png" => "png",
+        "image/jpeg" => "jpg",
+        "image/gif" => "gif",
+        "image/webp" => "webp",
+        _ => {
+            return Err(SonataError::InvalidMetadata(
+                "clipboard image format is not supported".into(),
+            ))
+        }
+    };
+    let data = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, data_base64)
+        .map_err(|_| SonataError::InvalidMetadata("clipboard image data is invalid".into()))?;
+    if data.is_empty() {
+        return Err(SonataError::InvalidMetadata(
+            "clipboard image is empty".into(),
+        ));
+    }
+
+    let guard = session(&state)?;
+    let s = guard.as_ref().unwrap();
+    s.index.get(&document_id)?;
+    if document_id.is_empty()
+        || !document_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err(SonataError::InvalidMetadata(
+            "document ID cannot be used for an attachment path".into(),
+        ));
+    }
+    let directory = s.workspace.root.join("attachments").join(&document_id);
+    fs::create_dir_all(&directory)?;
+    let mut target = directory.join(format!("clipboard-image.{extension}"));
+    let mut suffix = 2;
+    while target.exists() {
+        target = directory.join(format!("clipboard-image-{suffix}.{extension}"));
+        suffix += 1;
+    }
+    fs::write(&target, data)?;
+    let relative = s.workspace.relative(&target)?;
+    attachment_details(relative, &target)
+}
+#[tauri::command]
+pub fn read_attachment(path: String, state: State<AppState>) -> Result<Attachment> {
+    let guard = session(&state)?;
+    let s = guard.as_ref().unwrap();
+    let target = attachment_path(&s.workspace, &path)?;
+    attachment_details(path, &target)
+}
+#[tauri::command]
+pub fn reveal_attachment_in_explorer(path: String, state: State<AppState>) -> Result<()> {
+    let guard = session(&state)?;
+    let s = guard.as_ref().unwrap();
+    let target = attachment_path(&s.workspace, &path)?;
+    #[cfg(windows)]
+    {
+        Command::new("explorer.exe")
+            .arg(format!("/select,{}", target.display()))
+            .spawn()
+            .map_err(SonataError::Io)?;
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = target;
+        Err(SonataError::WorkspaceUnavailable(
+            "Revealing attachments in the system file explorer is only available on Windows".into(),
+        ))
+    }
 }
 /// Splits shorthand capture text ("task Buy milk #errand @due:tomorrow") into a
 /// `DocumentInput`. The parsed tags belong on the *input* rather than on the document

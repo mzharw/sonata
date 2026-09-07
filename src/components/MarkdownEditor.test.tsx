@@ -53,6 +53,18 @@ describe("MarkdownEditor", () => {
     expect(em?.textContent).toBe("italic");
   });
 
+  it("resolves a workspace attachment image to its native data URL", () => {
+    render(<MarkdownEditor value="![Cover](attachments/01ABC/cover.png)" attachmentUrls={{ "attachments/01ABC/cover.png": "data:image/png;base64,aGVsbG8=" }} onChange={vi.fn()} ariaLabel="Note body" />);
+    expect(document.querySelector(".md-prose img")?.getAttribute("src")).toBe("data:image/png;base64,aGVsbG8=");
+  });
+
+  it("opens a local attachment link through the native explorer callback", () => {
+    const onOpenAttachment = vi.fn();
+    render(<MarkdownEditor value="[Report](attachments/01ABC/report.pdf)" onChange={vi.fn()} onOpenAttachment={onOpenAttachment} ariaLabel="Note body" />);
+    fireEvent.click(screen.getByRole("link", { name: "Report" }));
+    expect(onOpenAttachment).toHaveBeenCalledWith("attachments/01ABC/report.pdf");
+  });
+
   it("strips dangerous attributes instead of executing them", () => {
     setup('<img src=x onerror="window.__pwned=true">hello');
     const img = document.querySelector(".md-prose img");
@@ -248,6 +260,42 @@ describe("MarkdownEditor", () => {
     expect(onChange).toHaveBeenLastCalledWith("```\n\n```");
   });
 
+  it("opens the attachment picker from the slash menu and removes the command text", () => {
+    const onAttach = vi.fn();
+    const onChange = vi.fn();
+    render(<MarkdownEditor value="" onChange={onChange} onAttach={onAttach} ariaLabel="Note body" />);
+    fireEvent.click(screen.getByRole("button", { name: /Edit Note body/ }));
+    const textarea = screen.getByLabelText("Note body") as HTMLTextAreaElement;
+    fireEvent.change(textarea, { target: { value: "/attach" } });
+    fireEvent.click(screen.getByText("Attach file"));
+    expect(onAttach).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenLastCalledWith("");
+  });
+
+  it("imports a pasted clipboard image and inserts its portable Markdown reference at the cursor", async () => {
+    const onChange = vi.fn();
+    const onPasteImage = vi.fn().mockResolvedValue({ name: "clipboard-image.png", path: "attachments/id/clipboard-image.png", mediaType: "image/png" });
+    render(<MarkdownEditor value="Before after" onChange={onChange} onPasteImage={onPasteImage} ariaLabel="Note body" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Note body" }));
+    const textarea = screen.getByLabelText("Note body") as HTMLTextAreaElement;
+    textarea.setSelectionRange(7, 7);
+    const image = new File(["image"], "clipboard.png", { type: "image/png" });
+    fireEvent.paste(textarea, { clipboardData: { files: [image], items: [] } });
+    await vi.waitFor(() => expect(onChange).toHaveBeenLastCalledWith("Before ![clipboard-image.png](attachments/id/clipboard-image.png)after"));
+    expect(onPasteImage).toHaveBeenCalledWith(image);
+  });
+
+  it("leaves the note unchanged when clipboard image import fails", async () => {
+    const onChange = vi.fn();
+    const onPasteImage = vi.fn().mockRejectedValue(new Error("no workspace"));
+    render(<MarkdownEditor value="Keep" onChange={onChange} onPasteImage={onPasteImage} ariaLabel="Note body" />);
+    fireEvent.click(screen.getByRole("button", { name: "Edit Note body" }));
+    const textarea = screen.getByLabelText("Note body");
+    fireEvent.paste(textarea, { clipboardData: { files: [new File(["image"], "clipboard.png", { type: "image/png" })], items: [] } });
+    await vi.waitFor(() => expect(onPasteImage).toHaveBeenCalledOnce());
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("renders task-list checkboxes enabled (not marked's default disabled) so they're clickable straight from preview", () => {
     setup("- [ ] task one\n- [x] task two");
     const boxes = document.querySelectorAll<HTMLInputElement>('.md-prose input[type="checkbox"]');
@@ -271,4 +319,5 @@ describe("MarkdownEditor", () => {
     fireEvent.click(boxes[1]);
     expect(onChange).toHaveBeenCalledWith("- [ ] task one\n- [ ] task two");
   });
+
 });

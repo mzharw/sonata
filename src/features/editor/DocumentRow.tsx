@@ -7,6 +7,9 @@ import { useDocumentEditor } from "../../hooks/useDocumentEditor";
 import { StatusSelect } from "../../components/StatusSelect";
 import { DocumentMetaBar } from "../../components/DocumentMetaBar";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/MarkdownEditor";
+import { AttachmentButton } from "../../components/AttachmentButton";
+import { attachToDocument, chooseAndImportAttachment, importClipboardImage } from "../../lib/attachments";
+import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
 import { TYPE_ICON } from "../../lib/typeIcons";
 import { STATUS_OPTIONS } from "../../lib/statusOptions";
 import { renderMarkdownPreview } from "../../lib/renderMarkdown";
@@ -41,11 +44,15 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
   const { doc: full, setDoc: setFull, status: saveStatus, save } = useDocumentEditor(expanded ? doc.id : undefined);
   const TypeIcon = TYPE_ICON[doc.type];
   const bodyEditorRef = useRef<MarkdownEditorHandle>(null);
+  const headerSentinelRef = useRef<HTMLSpanElement>(null);
   const [rawActive, setRawActive] = useState(false);
+  const [headerIsStuck, setHeaderIsStuck] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [showPreview, setShowPreview] = useState(false);
   const preview = useQuery({ queryKey: ["preview", doc.id], queryFn: () => native.readDocument(doc.id), enabled: showPreview, staleTime: 60_000 });
   const previewVisible = Boolean(showPreview && preview.data?.body.trim());
+  const previewTruncated = (preview.data?.body.length ?? 0) > 500;
+  const attachmentUrls = useAttachmentUrls(full?.body ?? preview.data?.body ?? "", full?.cover);
 
   const startPreviewTimer = () => {
     clearTimeout(hoverTimer.current);
@@ -59,6 +66,34 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
 
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
 
+  // The list itself is the scrollport, immediately below the tags bar (or the
+  // top bar when no tags are shown). Keep the row in its ordinary layout until
+  // this marker has crossed that boundary, then let the row dock there.
+  useEffect(() => {
+    if (!expanded) {
+      setHeaderIsStuck(false);
+      return;
+    }
+
+    const sentinel = headerSentinelRef.current;
+    const scrollport = sentinel?.closest<HTMLElement>(".document-list");
+    if (!sentinel || !scrollport) return;
+
+    if (!("IntersectionObserver" in window)) {
+      // All supported desktop webviews provide this, but preserve the previous
+      // sticky behavior for an older browser-only development environment.
+      setHeaderIsStuck(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      ([entry]) => setHeaderIsStuck(!entry.isIntersecting),
+      { root: scrollport, threshold: 0 },
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [expanded]);
+
   const copyNoteContent = async () => {
     try {
       await navigator.clipboard.writeText(full?.body ?? "");
@@ -69,14 +104,48 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
     }
   };
 
+  const attachFromBody = async () => {
+    if (!full) return;
+    try {
+      const attachment = await chooseAndImportAttachment(full.id);
+      if (!attachment) return;
+      setFull(attachToDocument(full, attachment));
+      ui.showToast({ message: attachment.mediaType.startsWith("image/") ? "Image attached to note" : "File attached to note" });
+    } catch (error) {
+      console.error("Couldn't attach file", error);
+      ui.showToast({ message: "Couldn't attach file — see console for details" });
+    }
+  };
+
+  const revealAttachment = (path: string) => {
+    void native.revealAttachmentInExplorer(path).catch((error: unknown) => {
+      console.error("Couldn't reveal attachment", path, error);
+      ui.showToast({ message: "Couldn't open attachment in File Explorer" });
+    });
+  };
+
+  const pasteImage = async (image: File) => {
+    if (!full) throw new Error("Note is unavailable");
+    try {
+      const attachment = await importClipboardImage(full.id, image);
+      ui.showToast({ message: "Image pasted into note" });
+      return attachment;
+    } catch (error) {
+      console.error("Couldn't paste image", error);
+      ui.showToast({ message: "Couldn't paste image — see console for details" });
+      throw error;
+    }
+  };
+
   useEffect(() => {
     if (expanded) document.getElementById(`doc-${doc.id}`)?.scrollIntoView({ block: "nearest" });
   }, [expanded, doc.id]);
 
   return (
     <li id={`doc-${doc.id}`} className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${doc.pinned ? " pinned" : ""}`}>
+      {expanded && <span ref={headerSentinelRef} className="doc-header-sentinel" aria-hidden="true" />}
       <div
-        className="doc-row"
+        className={`doc-row${headerIsStuck ? " is-sticky" : ""}`}
         onClick={() => {
           cancelPreview();
           ui.expand(expanded ? undefined : doc.id);
@@ -183,13 +252,31 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
         </div>
       </div>
       {!expanded && (
-        <div className={`doc-preview${previewVisible ? " expanded" : ""}`}>
-          {preview.data?.body.trim() && <div className="md-prose" dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(preview.data.body) }} />}
+        <div
+          className={`doc-preview${previewVisible ? " expanded" : ""}${previewTruncated ? " truncated" : ""}`}
+          onClick={() => {
+            cancelPreview();
+            ui.expand(doc.id);
+          }}
+        >
+          {preview.data?.body.trim() && <div className="md-prose" onClick={(event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            const path = target.closest("a")?.getAttribute("href");
+            if (!path?.match(/^attachments\/[A-Za-z0-9_./-]+$/)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            revealAttachment(path);
+          }} dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(preview.data.body, 500, attachmentUrls) }} />}
         </div>
       )}
       {expanded && !full && <div className="editor-loading">Loading…</div>}
       {expanded && full && (
         <article className="editor">
+          <div className="note-cover">
+            {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
+            <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
+          </div>
           <div className="editor-title-wrap">
             <input className="editor-title" aria-label="Title" value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} onBlur={() => void save()} />
             <IconPencil className="editor-title-pen" size={15} aria-hidden="true" />
@@ -203,6 +290,10 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
             onChange={(body) => setFull({ ...full, body })}
             onBlur={() => void save()}
             onRawChange={setRawActive}
+            attachmentUrls={attachmentUrls}
+            onAttach={() => void attachFromBody()}
+            onPasteImage={pasteImage}
+            onOpenAttachment={revealAttachment}
           />
           <div className="editor-footer">
             <span className="editor-timestamps">

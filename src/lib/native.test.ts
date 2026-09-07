@@ -13,18 +13,57 @@ describe("workspace selection", () => {
     vi.mocked(open).mockResolvedValue("/notes");
     await expect(native.chooseWorkspace()).resolves.toBe("/notes");
     expect(open).toHaveBeenCalledWith(expect.objectContaining({ directory: true, multiple: false }));
-    expect(invoke).toHaveBeenCalledExactlyOnceWith("open_workspace", { path: "/notes" });
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: true });
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: false });
+    expect(invoke).toHaveBeenCalledWith("open_workspace", { path: "/notes" });
   });
 
   it("leaves the workspace alone when the picker is cancelled", async () => {
     vi.mocked(open).mockResolvedValue(null);
     await expect(native.chooseWorkspace()).resolves.toBeNull();
-    expect(invoke).not.toHaveBeenCalled();
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: true });
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: false });
   });
 
   it("propagates open failures for display in the UI", async () => {
     vi.mocked(open).mockResolvedValue("/notes");
     vi.mocked(invoke).mockRejectedValue("Permission denied");
     await expect(native.chooseWorkspace()).rejects.toBe("Permission denied");
+  });
+});
+
+describe("attachment selection", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("freezes the sidebar while a file picker is open", async () => {
+    vi.mocked(open).mockResolvedValue("/photos/cover.png");
+    await expect(native.chooseAttachment()).resolves.toBe("/photos/cover.png");
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ multiple: false, title: "Attach file" }));
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: true });
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: false });
+  });
+
+  it("returns null when attachment selection is cancelled", async () => {
+    vi.mocked(open).mockResolvedValue(null);
+    await expect(native.chooseAttachment()).resolves.toBeNull();
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: true });
+    expect(invoke).toHaveBeenCalledWith("set_sidebar_picker_open", { pickerOpen: false });
+  });
+
+  it("sends the selected source path to the registered native importer", async () => {
+    vi.mocked(invoke).mockResolvedValue({ path: "attachments/id/cover.png" });
+    await native.importAttachment("id", "/photos/cover.png");
+    expect(invoke).toHaveBeenCalledWith("import_attachment", { documentId: "id", sourcePath: "/photos/cover.png" });
+  });
+
+  it("sends clipboard image bytes to the registered native importer", async () => {
+    vi.mocked(invoke).mockResolvedValue({ path: "attachments/id/clipboard-image.png" });
+    await native.importClipboardImage("id", "image/png", "aGVsbG8=");
+    expect(invoke).toHaveBeenCalledWith("import_clipboard_image", { documentId: "id", mediaType: "image/png", dataBase64: "aGVsbG8=" });
+  });
+
+  it("asks the native layer to reveal an attachment in File Explorer", async () => {
+    await native.revealAttachmentInExplorer("attachments/id/report.pdf");
+    expect(invoke).toHaveBeenCalledWith("reveal_attachment_in_explorer", { path: "attachments/id/report.pdf" });
   });
 });

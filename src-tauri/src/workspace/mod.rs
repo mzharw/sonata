@@ -58,6 +58,7 @@ impl Workspace {
             "ideas",
             "bookmarks",
             "archive",
+            "attachments",
             ".trash",
         ] {
             fs::create_dir_all(ws.root.join(name))?;

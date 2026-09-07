@@ -9,7 +9,7 @@ import { DueDateField } from "../../components/DueDateField";
 import { PrioritySelect } from "../../components/PrioritySelect";
 import { IconDropdown, type DropdownOption } from "../../components/IconDropdown";
 import { IconChevronDown, IconChevronUp, IconMaximize, IconPlus } from "../../components/icons";
-import { applyShorthandSuggestion, opensWithTypeKeyword, shorthandSuggestions, type ShorthandSuggestion } from "../../lib/shorthand";
+import { ALL_SHORTHAND_SUGGESTIONS, applyShorthandSuggestion, opensWithTypeKeyword, shorthandSuggestions, type ShorthandSuggestion } from "../../lib/shorthand";
 import { CAPTURE_HOTKEY, NEW_NOTE_HOTKEY, hasMod } from "../../lib/hotkeys";
 import type { DocumentType, Priority } from "../../types/domain";
 
@@ -31,6 +31,7 @@ export function QuickAdd() {
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [suggestOpen, setSuggestOpen] = useState(false);
+  const [showShorthandReference, setShowShorthandReference] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const [focused, setFocused] = useState(false);
   const [flash, setFlash] = useState(false);
@@ -55,16 +56,18 @@ export function QuickAdd() {
     () => shorthandSuggestions(text, caret, knownTags.data ?? [], { offerTypes }),
     [text, caret, knownTags.data, offerTypes],
   );
-  const suggestions = suggestOpen ? (suggestion?.items ?? []) : [];
+  const activeSuggestion = showShorthandReference ? { start: caret, items: ALL_SHORTHAND_SUGGESTIONS } : suggestion;
+  const suggestions = suggestOpen ? (activeSuggestion?.items ?? []) : [];
 
   const syncCaret = (target: HTMLInputElement) => setCaret(target.selectionStart ?? target.value.length);
 
   const acceptSuggestion = (item: ShorthandSuggestion) => {
-    if (!suggestion) return;
-    const next = applyShorthandSuggestion(text, suggestion.start, caret, item);
+    if (!activeSuggestion) return;
+    const next = applyShorthandSuggestion(text, activeSuggestion.start, caret, item);
     setText(next.text);
     setCaret(next.caret);
     setHighlight(0);
+    setShowShorthandReference(false);
     requestAnimationFrame(() => {
       const input = inputRef.current;
       if (!input) return;
@@ -91,6 +94,7 @@ export function QuickAdd() {
       setText("");
       setCaret(0);
       setSuggestOpen(false);
+      setShowShorthandReference(false);
       afterCreate(doc.id);
     } catch (error) {
       console.error("Quick capture failed", error);
@@ -184,7 +188,7 @@ export function QuickAdd() {
             className="quick-add-input"
             aria-label="Quick add"
             placeholder="Buy milk #errand @due:tomorrow"
-            title="Shorthand: [task|note|idea|bookmark] Title #tag @due:date"
+            title="Shorthand: [task|note|idea|bookmark] Title #tag @due:date — Ctrl+Space shows all syntax"
             value={text}
             autoComplete="off"
             role="combobox"
@@ -194,6 +198,7 @@ export function QuickAdd() {
               setText(e.target.value);
               syncCaret(e.target);
               setHighlight(0);
+              setShowShorthandReference(false);
               setSuggestOpen(true);
             }}
             onSelect={(e) => syncCaret(e.currentTarget)}
@@ -204,9 +209,17 @@ export function QuickAdd() {
             }}
             onBlur={() => {
               setSuggestOpen(false);
+              setShowShorthandReference(false);
               setFocused(false);
             }}
             onKeyDown={(e) => {
+              if (e.ctrlKey && !e.altKey && e.code === "Space") {
+                e.preventDefault();
+                setHighlight(0);
+                setShowShorthandReference((visible) => !visible);
+                setSuggestOpen(true);
+                return;
+              }
               if (suggestions.length > 0) {
                 if (e.key === "ArrowDown") {
                   e.preventDefault();

@@ -25,6 +25,7 @@ const KNOWN: &[&str] = &[
     "parent",
     "links",
     "bookmark",
+    "cover",
     "completed",
 ];
 pub fn now() -> String {
@@ -77,6 +78,13 @@ pub fn wiki_targets(body: &str) -> Vec<String> {
 
 pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
     let (frontmatter, body) = split_frontmatter(raw)?;
+    // `serialize` places one blank separator line between frontmatter and the body.
+    // The closing frontmatter marker already consumes its own newline, so remove just
+    // that separator here instead of treating it as part of the document body.
+    let body = body
+        .strip_prefix("\r\n")
+        .or_else(|| body.strip_prefix('\n'))
+        .unwrap_or(body);
     let map: Mapping = if let Some(yaml) = frontmatter {
         serde_yaml::from_str(yaml).map_err(|e| SonataError::MalformedFrontmatter(e.to_string()))?
     } else {
@@ -128,6 +136,7 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         .and_then(|v| serde_yaml::from_value::<Bookmark>(v.clone()).ok());
     let due = get("due");
     let reminder = get("reminder");
+    let cover = get("cover");
     let unknown = map
         .into_iter()
         .filter(|(key, _)| key.as_str().is_none_or(|k| !KNOWN.contains(&k)))
@@ -150,6 +159,7 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         parent,
         links,
         bookmark,
+        cover,
         content_hash: Some(hash(raw)),
         unknown,
     })
@@ -180,6 +190,7 @@ pub fn new_document(
         parent: None,
         links: None,
         bookmark: None,
+        cover: None,
         content_hash: None,
         unknown: Mapping::new(),
     }
@@ -245,6 +256,9 @@ pub fn serialize(document: &SonataDocument) -> Result<String> {
             serde_yaml::to_value(v).map_err(|e| SonataError::InvalidMetadata(e.to_string()))?,
         );
     }
+    if let Some(v) = &document.cover {
+        put(&mut map, "cover", Value::String(v.clone()));
+    }
     let yaml =
         serde_yaml::to_string(&map).map_err(|e| SonataError::InvalidMetadata(e.to_string()))?;
     Ok(format!("---\n{}---\n\n{}", yaml, document.body))
@@ -285,6 +299,11 @@ mod tests {
             Some("yes")
         );
         assert!(serialize(&doc).unwrap().contains("custom: yes"));
+    }
+    #[test]
+    fn frontmatter_separator_is_not_part_of_the_body() {
+        let raw = "---\nid: 01ABC\ntitle: Hello\n---\n\nFirst line";
+        assert_eq!(parse("notes/hello.md", raw).unwrap().body, "First line");
     }
     #[test]
     fn wiki_links_are_found() {
