@@ -36,15 +36,14 @@ export function DocumentMetaBar({
     status: <StatusSelect value={doc.status} onChange={(status) => onChange({ ...doc, status })} />,
     priority: <PrioritySelect value={doc.priority} onChange={(priority) => onChange({ ...doc, priority })} />,
     due: <DueDateField value={doc.due ?? ""} onChange={(due) => onChange({ ...doc, due: due || undefined })} />,
-    // Reminders are stored but not yet delivered — nothing reads `reminder_at` — so the
-    // placeholder says so rather than implying a notification will arrive.
     reminder: (
       <DueDateField
         value={doc.reminder ?? ""}
         onChange={(reminder) => onChange({ ...doc, reminder: reminder || undefined })}
         icon={IconBell}
         placeholder="No reminder"
-        label="reminder (not yet delivered)"
+        label="reminder"
+        withTime
       />
     ),
     stage: <StageSelect value={doc.stage} onChange={(stage) => onChange({ ...doc, stage })} />,

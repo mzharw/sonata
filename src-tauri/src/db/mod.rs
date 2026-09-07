@@ -1,5 +1,5 @@
 use crate::{
-    domain::{DocumentSummary, Field, SearchQuery, SonataDocument, SortOrder},
+    domain::{DocumentSummary, Field, PendingReminder, SearchQuery, SonataDocument, SortOrder},
     errors::Result,
     markdown,
 };
@@ -7,8 +7,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 /// Bumped whenever `SCHEMA` changes shape. A mismatch drops and recreates the derived
 /// tables rather than patching them, because `indexer::rebuild` refills them anyway.
-const SCHEMA_VERSION: i64 = 2;
-const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,path TEXT NOT NULL UNIQUE,type TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,status TEXT,priority TEXT,due_at TEXT,reminder_at TEXT,parent_id TEXT,archived INTEGER NOT NULL DEFAULT 0,pinned INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,content_hash TEXT NOT NULL,stage TEXT,bookmark_url TEXT); CREATE TABLE IF NOT EXISTS document_tags(document_id TEXT NOT NULL,tag TEXT NOT NULL,PRIMARY KEY(document_id,tag)); CREATE INDEX IF NOT EXISTS idx_document_tags_tag ON document_tags(tag); CREATE TABLE IF NOT EXISTS document_links(source_id TEXT NOT NULL,target_id TEXT,raw_target TEXT NOT NULL,PRIMARY KEY(source_id,raw_target)); CREATE TABLE IF NOT EXISTS index_errors(path TEXT PRIMARY KEY,error_type TEXT NOT NULL,message TEXT NOT NULL,updated_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS delivered_reminders(document_id TEXT PRIMARY KEY,delivered_at TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(id UNINDEXED,title,body,path);";
+const SCHEMA_VERSION: i64 = 3;
+const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,path TEXT NOT NULL UNIQUE,type TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,status TEXT,priority TEXT,due_at TEXT,reminder_at TEXT,parent_id TEXT,archived INTEGER NOT NULL DEFAULT 0,pinned INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,content_hash TEXT NOT NULL,stage TEXT,bookmark_url TEXT); CREATE TABLE IF NOT EXISTS document_tags(document_id TEXT NOT NULL,tag TEXT NOT NULL,PRIMARY KEY(document_id,tag)); CREATE INDEX IF NOT EXISTS idx_document_tags_tag ON document_tags(tag); CREATE TABLE IF NOT EXISTS document_links(source_id TEXT NOT NULL,target_id TEXT,raw_target TEXT NOT NULL,PRIMARY KEY(source_id,raw_target)); CREATE TABLE IF NOT EXISTS index_errors(path TEXT PRIMARY KEY,error_type TEXT NOT NULL,message TEXT NOT NULL,updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_documents_reminder ON documents(reminder_at) WHERE reminder_at IS NOT NULL; CREATE TABLE IF NOT EXISTS delivered_reminders(document_id TEXT PRIMARY KEY,reminder_at TEXT NOT NULL,delivered_at TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(id UNINDEXED,title,body,path);";
 
 pub struct Index {
     conn: Connection,
@@ -37,6 +37,12 @@ impl Index {
             self.conn.execute_batch(
                 "DROP TABLE IF EXISTS documents_fts; DROP TABLE IF EXISTS documents; DROP TABLE IF EXISTS document_tags; DROP TABLE IF EXISTS document_links; DROP TABLE IF EXISTS index_errors;",
             )?;
+            if version < 3 {
+                // Before v3 nothing ever wrote this table, so reshaping it costs no real
+                // state. From v3 on it carries delivery history and survives a rebuild.
+                self.conn
+                    .execute_batch("DROP TABLE IF EXISTS delivered_reminders;")?;
+            }
         }
         self.conn.execute_batch(SCHEMA)?;
         // `user_version` takes no bound parameter; the value is a private const integer,
@@ -220,6 +226,41 @@ impl Index {
         rows.collect::<std::result::Result<Vec<_>, _>>()
             .map_err(Into::into)
     }
+    /// Reminders that are set and not yet delivered *for their current value*.
+    ///
+    /// Matching on `reminder_at` rather than just the document id is what makes an edited
+    /// reminder re-arm: a new value has no delivery row, so it fires again. Archived and
+    /// completed documents are excluded — a reminder for something you have already closed
+    /// out is noise. Deciding *when* each one fires is `reminders::fire_at`'s job, not
+    /// SQL's, because the stored value may or may not carry a time.
+    pub fn pending_reminders(&self) -> Result<Vec<PendingReminder>> {
+        let mut statement = self.conn.prepare(
+            "SELECT d.id,d.title,d.reminder_at FROM documents d \
+             WHERE d.reminder_at IS NOT NULL AND d.reminder_at != '' AND d.archived=0 \
+             AND (d.status IS NULL OR d.status!='completed') \
+             AND NOT EXISTS(SELECT 1 FROM delivered_reminders r WHERE r.document_id=d.id AND r.reminder_at=d.reminder_at)",
+        )?;
+        let rows = statement.query_map([], |r| {
+            Ok(PendingReminder {
+                id: r.get(0)?,
+                title: r.get(1)?,
+                reminder_at: r.get(2)?,
+            })
+        })?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    /// Records that `reminder_at` has been dealt with, so it is not delivered twice.
+    pub fn mark_reminder_delivered(&self, id: &str, reminder_at: &str, at: &str) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO delivered_reminders(document_id,reminder_at,delivered_at) VALUES(?1,?2,?3) \
+             ON CONFLICT(document_id) DO UPDATE SET reminder_at=excluded.reminder_at,delivered_at=excluded.delivered_at",
+            params![id, reminder_at, at],
+        )?;
+        Ok(())
+    }
+
     pub fn tags(&self) -> Result<Vec<(String, i64)>> {
         let mut s = self.conn.prepare(
             "SELECT tag,count(*) FROM document_tags GROUP BY tag ORDER BY count(*) DESC,tag",
@@ -584,5 +625,115 @@ mod list_filter_tests {
             doc.stage = Some(IdeaStage::Parked);
         });
         assert_eq!(index.get("01NEW").unwrap().stage, Some(IdeaStage::Parked));
+    }
+
+    #[test]
+    fn a_reminder_is_pending_until_it_is_recorded() {
+        let index = index();
+        seed_with(&index, DocumentType::Task, "call back", |doc| {
+            doc.id = "01CALL".into();
+            doc.reminder = Some("2026-09-10T15:30".into());
+        });
+
+        let pending = index.pending_reminders().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].id, "01CALL");
+        assert_eq!(pending[0].title, "call back");
+        assert_eq!(pending[0].reminder_at, "2026-09-10T15:30");
+
+        index
+            .mark_reminder_delivered("01CALL", "2026-09-10T15:30", "2026-09-10T15:30:02")
+            .unwrap();
+        assert!(index.pending_reminders().unwrap().is_empty());
+    }
+
+    /// The dedupe key is (document, reminder instant), so moving a reminder re-arms it
+    /// without any explicit "un-deliver" step.
+    #[test]
+    fn editing_a_delivered_reminder_re_arms_it() {
+        let index = index();
+        seed_with(&index, DocumentType::Task, "call back", |doc| {
+            doc.id = "01CALL".into();
+            doc.reminder = Some("2026-09-10T15:30".into());
+        });
+        index
+            .mark_reminder_delivered("01CALL", "2026-09-10T15:30", "2026-09-10T15:30:02")
+            .unwrap();
+
+        seed_with(&index, DocumentType::Task, "call back", |doc| {
+            doc.id = "01CALL".into();
+            doc.reminder = Some("2026-09-11T09:00".into());
+        });
+
+        let pending = index.pending_reminders().unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].reminder_at, "2026-09-11T09:00");
+    }
+
+    #[test]
+    fn a_closed_out_document_does_not_nag() {
+        let index = index();
+        seed_with(&index, DocumentType::Task, "done", |doc| {
+            doc.id = "01DONE".into();
+            doc.reminder = Some("2026-09-10T15:30".into());
+            doc.status = Some(TaskStatus::Completed);
+        });
+        seed_with(&index, DocumentType::Task, "archived", |doc| {
+            doc.id = "01ARCH".into();
+            doc.reminder = Some("2026-09-10T15:30".into());
+            doc.archived = true;
+        });
+        seed_with(&index, DocumentType::Task, "open", |doc| {
+            doc.id = "01OPEN".into();
+            doc.reminder = Some("2026-09-10T15:30".into());
+            doc.status = Some(TaskStatus::Todo);
+        });
+
+        let ids: Vec<_> = index
+            .pending_reminders()
+            .unwrap()
+            .into_iter()
+            .map(|r| r.id)
+            .collect();
+        assert_eq!(ids, vec!["01OPEN".to_string()]);
+    }
+
+    #[test]
+    fn a_document_with_no_reminder_is_never_pending() {
+        let index = index();
+        seed_with(&index, DocumentType::Task, "no reminder", |doc| {
+            doc.id = "01NONE".into();
+        });
+        seed_with(&index, DocumentType::Task, "empty reminder", |doc| {
+            doc.id = "01EMPTY".into();
+            doc.reminder = Some(String::new());
+        });
+        assert!(index.pending_reminders().unwrap().is_empty());
+    }
+
+    /// Delivery history is the one thing a rebuild cannot reconstruct from Markdown, so it
+    /// has to survive one — otherwise every past reminder would fire again.
+    #[test]
+    fn delivery_history_survives_a_rebuild() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("index.db");
+        {
+            let index = Index::open(&path).unwrap();
+            seed_with(&index, DocumentType::Task, "call back", |doc| {
+                doc.id = "01CALL".into();
+                doc.reminder = Some("2026-09-10T15:30".into());
+            });
+            index
+                .mark_reminder_delivered("01CALL", "2026-09-10T15:30", "2026-09-10T15:30:02")
+                .unwrap();
+            index.clear().unwrap();
+        }
+
+        let index = Index::open(&path).unwrap();
+        seed_with(&index, DocumentType::Task, "call back", |doc| {
+            doc.id = "01CALL".into();
+            doc.reminder = Some("2026-09-10T15:30".into());
+        });
+        assert!(index.pending_reminders().unwrap().is_empty());
     }
 }

@@ -6,6 +6,7 @@ pub mod errors;
 pub mod indexer;
 pub mod markdown;
 pub mod relations;
+pub mod reminders;
 #[cfg(feature = "desktop")]
 pub mod windows;
 pub mod workspace;
@@ -37,6 +38,7 @@ pub fn run() {
         }))
         .setup(|app| {
             windows::sidebar::install(app.handle())?;
+            reminders::spawn_watcher(app.handle().clone());
             let open_item = MenuItem::with_id(app, "open", "Open Sonata", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Sonata", true, None::<&str>)?;
             let tray_menu = Menu::with_items(app, &[&open_item, &quit_item])?;

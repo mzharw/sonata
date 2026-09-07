@@ -279,6 +279,16 @@ pub struct DocumentSummary {
     pub completed_child_count: i64,
 }
 
+/// A reminder the index believes has not been delivered yet. Never crosses the bridge —
+/// delivery is entirely a backend concern.
+#[derive(Debug, Clone)]
+pub struct PendingReminder {
+    pub id: String,
+    pub title: String,
+    /// The raw frontmatter value, so `reminders::fire_at` owns interpreting it.
+    pub reminder_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct SearchQuery {
     pub text: Option<String>,

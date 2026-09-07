@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconCalendar, IconChevronLeft, IconChevronRight, IconX } from "./icons";
 import type { ComponentType } from "react";
+import { formatDateTime, joinDateTime, splitDateTime, todayISO } from "../lib/dateTime";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const POPOVER_WIDTH = 240;
@@ -40,12 +41,6 @@ function buildGrid(monthStart: Date): Date[] {
   return Array.from({ length: 42 }, (_, i) => new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + i));
 }
 
-function formatDisplay(iso: string): string {
-  const date = parseISO(iso);
-  const sameYear = date.getFullYear() === new Date().getFullYear();
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: sameYear ? undefined : "numeric" });
-}
-
 interface Placement {
   top: number;
   left: number;
@@ -74,6 +69,7 @@ export function DueDateField({
   icon: Icon = IconCalendar,
   placeholder = "No date",
   label = "due date",
+  withTime = false,
 }: {
   value: string;
   onChange: (value: string) => void;
@@ -81,10 +77,19 @@ export function DueDateField({
   placeholder?: string;
   /** Names the field in the trigger, clear button and dialog labels, e.g. "reminder". */
   label?: string;
+  /**
+   * Offers a time of day alongside the date, storing `YYYY-MM-DDTHH:MM`.
+   *
+   * Off for due dates: a due date is a day, and `Index::list` compares `due_at` against
+   * `date('now','localtime')`, so a time component there would quietly break the Today
+   * and Upcoming views.
+   */
+  withTime?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement | null>(null);
-  const [viewMonth, setViewMonth] = useState(() => firstOfMonth(value ? parseISO(value) : new Date()));
+  const { date: datePart, time: timePart } = splitDateTime(value);
+  const [viewMonth, setViewMonth] = useState(() => firstOfMonth(datePart ? parseISO(datePart) : new Date()));
   const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const today = startOfDay(new Date());
@@ -94,7 +99,7 @@ export function DueDateField({
       setPlacement(null);
       return;
     }
-    setViewMonth(firstOfMonth(value ? parseISO(value) : new Date()));
+    setViewMonth(firstOfMonth(datePart ? parseISO(datePart) : new Date()));
     const rect = containerRef.current?.getBoundingClientRect();
     if (rect) setPlacement(computePlacement(rect));
 
@@ -120,10 +125,16 @@ export function DueDateField({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
+  // Picking a day keeps whatever time is already set, so choosing "tomorrow" on a 15:30
+  // reminder does not silently drop the 15:30.
   const pick = (date: Date) => {
-    onChange(toISO(date));
+    onChange(joinDateTime(toISO(date), withTime ? timePart : ""));
     setOpen(false);
   };
+
+  // A time on its own is not a moment, so the first time picked implies today. The
+  // popover stays open — you have said when, not yet which day.
+  const pickTime = (time: string) => onChange(joinDateTime(datePart || todayISO(), time));
 
   const shortcut = (offsetDays: number) => {
     const d = new Date();
@@ -135,7 +146,7 @@ export function DueDateField({
     <div className="date-picker" ref={containerRef}>
       <button type="button" className={`date-picker-trigger${value ? " has-value" : ""}`} aria-haspopup="dialog" aria-expanded={open} aria-label={`Choose ${label}`} onClick={() => setOpen((o) => !o)}>
         <Icon size={14} />
-        <span>{value ? formatDisplay(value) : placeholder}</span>
+        <span>{formatDateTime(value) || placeholder}</span>
       </button>
       {value && (
         <button type="button" className="icon-btn" aria-label={`Clear ${label}`} title={`Clear ${label}`} onMouseDown={(e) => e.preventDefault()} onClick={() => onChange("")}>
@@ -150,6 +161,31 @@ export function DueDateField({
               <button type="button" onClick={() => shortcut(1)}>Tomorrow</button>
               <button type="button" onClick={() => shortcut(7)}>Next week</button>
             </div>
+            {withTime && (
+              <div className="date-picker-time">
+                <label htmlFor={`${label}-time`}>Time</label>
+                <input
+                  id={`${label}-time`}
+                  type="time"
+                  aria-label={`Time for ${label}`}
+                  value={timePart}
+                  onChange={(e) => pickTime(e.target.value)}
+                />
+                {timePart ? (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label="Clear time"
+                    title="Clear the time — the reminder falls back to the morning"
+                    onClick={() => onChange(joinDateTime(datePart, ""))}
+                  >
+                    <IconX size={11} />
+                  </button>
+                ) : (
+                  <small>from 9:00</small>
+                )}
+              </div>
+            )}
             <div className="date-picker-header">
               <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => setViewMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><IconChevronLeft size={14} /></button>
               <span>{viewMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</span>
@@ -165,7 +201,7 @@ export function DueDateField({
                   <button
                     type="button"
                     key={iso}
-                    className={`${date.getMonth() === viewMonth.getMonth() ? "" : "outside"}${sameDay(date, today) ? " today" : ""}${value === iso ? " selected" : ""}`}
+                    className={`${date.getMonth() === viewMonth.getMonth() ? "" : "outside"}${sameDay(date, today) ? " today" : ""}${datePart === iso ? " selected" : ""}`}
                     onClick={() => pick(date)}
                   >
                     {date.getDate()}

@@ -43,7 +43,7 @@ const CONTROLS = {
   status: "Status",
   priority: "Priority",
   due: "Choose due date",
-  reminder: "Choose reminder (not yet delivered)",
+  reminder: "Choose reminder",
   stage: "Stage",
   url: "URL",
 } as const;
@@ -123,5 +123,31 @@ describe("the bookmark link", () => {
   it("offers nothing to open when there is no link", () => {
     mount("bookmark");
     expect(screen.queryByRole("button", { name: "Open link in browser" })).toBeNull();
+  });
+});
+
+describe("the reminder field", () => {
+  it("offers a time of day, which a due date does not", () => {
+    mount("task");
+    fireEvent.click(screen.getByRole("button", { name: "Choose reminder" }));
+    expect(screen.getByLabelText("Time for reminder")).toBeTruthy();
+    cleanup();
+
+    // A due date is a day: Index::list compares due_at to date('now'), so a time
+    // component there would quietly break Today and Upcoming.
+    mount("task");
+    fireEvent.click(screen.getByRole("button", { name: "Choose due date" }));
+    expect(screen.queryByLabelText("Time for due date")).toBeNull();
+  });
+
+  it("shows the time it was given, and says so when it has none", () => {
+    mount("task", { reminder: "2026-09-10T15:30" });
+    expect(screen.getByRole("button", { name: "Choose reminder" }).textContent).toMatch(/Sep 10.*3:30/);
+    cleanup();
+
+    mount("task", { reminder: "2026-09-10" });
+    const trigger = screen.getByRole("button", { name: "Choose reminder" });
+    expect(trigger.textContent).toMatch(/Sep 10/);
+    expect(trigger.textContent).not.toMatch(/:/);
   });
 });

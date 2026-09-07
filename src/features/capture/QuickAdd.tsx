@@ -353,7 +353,7 @@ export function QuickAdd() {
               due: { label: "Due date", control: <DueDateField value={due} onChange={setDue} /> },
               reminder: {
                 label: "Reminder",
-                control: <DueDateField value={reminder} onChange={setReminder} icon={IconBell} placeholder="No reminder" label="reminder (not yet delivered)" />,
+                control: <DueDateField value={reminder} onChange={setReminder} icon={IconBell} placeholder="No reminder" label="reminder" withTime />,
               },
               stage: { label: "Stage", control: <StageSelect value={stage} onChange={setStage} /> },
               url: { label: "Link", control: <UrlField value={url} onChange={setUrl} /> },
