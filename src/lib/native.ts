@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { Attachment, DocumentSummary, SearchQuery, SonataDocument } from "../types/domain";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import type { Attachment, DocumentSummary, DocumentType, SearchQuery, SonataDocument } from "../types/domain";
 
 async function setSidebarPickerOpen(pickerOpen: boolean) {
   try {
@@ -32,6 +33,22 @@ export const native = {
   archive: (id: string) => invoke<void>("archive_document", { id }),
   unarchive: (id: string) => invoke<void>("unarchive_document", { id }),
   trash: (id: string) => invoke<void>("move_document_to_trash", { id }),
+  /**
+   * Converts a document to another type. Rust moves the file into the new type's folder
+   * and drops the metadata that type does not support, so the returned document has a new
+   * `path` and `contentHash` — callers holding an editor must adopt it rather than saving
+   * the copy they had, or the next autosave recreates the file at its old location.
+   */
+  setDocumentType: (id: string, type: DocumentType, expectedHash?: string) =>
+    invoke<SonataDocument>("set_document_type", { id, documentType: type, expectedHash }),
+  openExternal: async (url: string) => {
+    try {
+      await openUrl(url);
+    } catch {
+      // Browser development has no opener plugin; a new tab is the honest equivalent.
+      window.open(url, "_blank", "noopener");
+    }
+  },
   tags: () => invoke<Array<{ tag: string; count: number }>>("list_tags"),
   children: (id: string) => invoke<DocumentSummary[]>("list_children", { id }),
   backlinks: (id: string) => invoke<DocumentSummary[]>("list_backlinks", { id }),

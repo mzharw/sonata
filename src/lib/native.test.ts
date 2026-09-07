@@ -1,10 +1,13 @@
+// @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { native } from "./native";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
 vi.mock("@tauri-apps/plugin-dialog", () => ({ open: vi.fn() }));
+vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 
 describe("workspace selection", () => {
   beforeEach(() => vi.resetAllMocks());
@@ -65,5 +68,40 @@ describe("attachment selection", () => {
   it("asks the native layer to reveal an attachment in File Explorer", async () => {
     await native.revealAttachmentInExplorer("attachments/id/report.pdf");
     expect(invoke).toHaveBeenCalledWith("reveal_attachment_in_explorer", { path: "attachments/id/report.pdf" });
+  });
+});
+
+describe("type conversion and external links", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("sends the type as a camelCase command argument", async () => {
+    await native.setDocumentType("01ABC", "task");
+    expect(invoke).toHaveBeenCalledWith("set_document_type", {
+      id: "01ABC",
+      documentType: "task",
+      expectedHash: undefined,
+    });
+  });
+
+  it("passes the expected hash through so a stale conversion is rejected", async () => {
+    await native.setDocumentType("01ABC", "note", "abc123");
+    expect(invoke).toHaveBeenCalledWith("set_document_type", {
+      id: "01ABC",
+      documentType: "note",
+      expectedHash: "abc123",
+    });
+  });
+
+  it("opens a link through the opener plugin", async () => {
+    await native.openExternal("https://example.com");
+    expect(openUrl).toHaveBeenCalledWith("https://example.com");
+  });
+
+  it("falls back to a new tab when there is no opener plugin", async () => {
+    vi.mocked(openUrl).mockRejectedValue(new Error("no plugin"));
+    const spy = vi.spyOn(window, "open").mockReturnValue(null);
+    await native.openExternal("https://example.com");
+    expect(spy).toHaveBeenCalledWith("https://example.com", "_blank", "noopener");
+    spy.mockRestore();
   });
 });

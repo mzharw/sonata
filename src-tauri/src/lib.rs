@@ -27,6 +27,7 @@ pub fn run() {
         .manage(windows::sidebar::SidebarState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             let _ = app.get_webview_window("main").map(|w| {
@@ -81,6 +82,7 @@ pub fn run() {
             commands::archive_document,
             commands::unarchive_document,
             commands::move_document_to_trash,
+            commands::set_document_type,
             commands::list_tags,
             commands::list_children,
             commands::list_backlinks,

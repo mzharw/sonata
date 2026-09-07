@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Capabilities for Sonata's main window.",
   "windows": ["main", "capture", "edge-trigger"],
-  "permissions": ["core:default", "dialog:allow-open", "notification:default", "global-shortcut:allow-register", "global-shortcut:allow-unregister"]
+  "permissions": ["core:default", "dialog:allow-open", "notification:default", "opener:allow-open-url", "global-shortcut:allow-register", "global-shortcut:allow-unregister"]
 }

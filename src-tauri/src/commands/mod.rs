@@ -1,6 +1,6 @@
 use crate::{
     db::Index,
-    domain::{DocumentInput, DocumentSummary, SearchQuery, SonataDocument},
+    domain::{DocumentInput, DocumentSummary, DocumentType, SearchQuery, SonataDocument},
     errors::{Result, SonataError},
     indexer, markdown, relations,
     workspace::Workspace,
@@ -278,7 +278,13 @@ fn relocate_file(s: &Session, doc: &SonataDocument, dest_folder: &str) -> Result
         index += 1;
     }
     fs::rename(&old, &candidate)?;
-    s.workspace.relative(&candidate)
+    let relative = s.workspace.relative(&candidate)?;
+    // `documents.path` is UNIQUE. A row can still be indexed at the destination path if
+    // its file vanished outside Sonata, in which case the caller's upsert would fail the
+    // constraint after the file had already moved. Release the path here so every move
+    // (archive, unarchive, trash, type change) is safe from that.
+    s.index.remove_path(&relative)?;
+    Ok(relative)
 }
 
 fn archive_doc(s: &mut Session, id: &str) -> Result<()> {
@@ -304,6 +310,57 @@ fn trash_doc(s: &mut Session, id: &str) -> Result<()> {
     s.index.remove_path(&doc.path)
 }
 
+/// Converts `id` to `kind`: rewrites the frontmatter, drops the metadata the target type
+/// does not support, and moves the file into that type's folder.
+///
+/// An archived document keeps living in `archive/` — only its frontmatter changes, because
+/// `unarchive_doc` reads `document_type.folder()` at unarchive time and so routes it to the
+/// *new* type's folder later.
+///
+/// Children pointing at a converted parent are deliberately left alone. The parent edge
+/// lives on the child (ADR-004) and the ULID never changes (ADR-003), so the references
+/// survive verbatim and converting back restores the subtree intact; rewriting N sibling
+/// files from one action would be both surprising and non-atomic. Callers therefore have to
+/// gate subtask UI on whether the type supports `Field::Parent`, not on the child count.
+fn change_type(
+    s: &mut Session,
+    id: &str,
+    kind: DocumentType,
+    expected_hash: Option<&str>,
+) -> Result<SonataDocument> {
+    let mut doc = read_raw(s, id)?;
+    // Idempotent, and without bumping `updated`: converting to the type it already is is
+    // not an edit.
+    if doc.document_type == kind {
+        return Ok(doc);
+    }
+    // `read_raw` just parsed the file and `parse` sets `content_hash` from the raw text, so
+    // this is the same check `update_document` makes without a second read.
+    if let Some(expected) = expected_hash {
+        if doc.content_hash.as_deref() != Some(expected) {
+            return Err(SonataError::WriteConflict);
+        }
+    }
+    let old_path = doc.path.clone();
+    if doc.id.starts_with("external:") {
+        doc.id = ulid::Ulid::new().to_string();
+        // The synthetic row still holds `old_path`, which for an archived document is the
+        // very path the new id is about to claim. `documents.path` is UNIQUE, so release it.
+        s.index.remove_path(&old_path)?;
+    }
+    doc.document_type = kind;
+    doc.retain_supported_fields();
+    relations::validate_parent(&s.index, &doc.id, doc.parent.as_deref())?;
+    doc.updated = markdown::now();
+    if !doc.archived {
+        doc.path = relocate_file(s, &doc, kind.folder())?;
+    }
+    // One upsert moves the index row: it is keyed by id and `ON CONFLICT(id) DO UPDATE SET
+    // path=excluded.path` is exactly the "the path changed" case (see db::upsert).
+    write_raw(s, &mut doc)?;
+    Ok(doc)
+}
+
 #[tauri::command]
 pub fn archive_document(id: String, state: State<AppState>) -> Result<()> {
     let mut guard = session(&state)?;
@@ -318,6 +375,25 @@ pub fn unarchive_document(id: String, state: State<AppState>) -> Result<()> {
 pub fn move_document_to_trash(id: String, state: State<AppState>) -> Result<()> {
     let mut guard = session(&state)?;
     trash_doc(guard.as_mut().unwrap(), &id)
+}
+#[tauri::command]
+pub fn set_document_type(
+    id: String,
+    document_type: DocumentType,
+    expected_hash: Option<String>,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<SonataDocument> {
+    let mut guard = session(&state)?;
+    let doc = change_type(
+        guard.as_mut().unwrap(),
+        &id,
+        document_type,
+        expected_hash.as_deref(),
+    )?;
+    app.emit("document:changed", &doc.id).ok();
+    app.emit("workspace:index-updated", &doc.id).ok();
+    Ok(doc)
 }
 #[derive(Serialize)]
 pub struct TagCount {
@@ -567,7 +643,6 @@ fn write_raw(s: &Session, doc: &mut SonataDocument) -> Result<()> {
 #[cfg(test)]
 mod archive_tests {
     use super::*;
-    use crate::domain::DocumentType;
 
     fn make_session() -> (tempfile::TempDir, Session) {
         let dir = tempfile::tempdir().unwrap();
@@ -657,9 +732,215 @@ mod archive_tests {
 }
 
 #[cfg(test)]
+mod type_change_tests {
+    use super::*;
+    use crate::domain::{Bookmark, IdeaStage, Priority, TaskStatus};
+
+    fn make_session() -> (tempfile::TempDir, Session) {
+        let dir = tempfile::tempdir().unwrap();
+        let workspace = Workspace::create(dir.path().to_path_buf()).unwrap();
+        let index = Index::open(&workspace.db_path()).unwrap();
+        (dir, Session { workspace, index })
+    }
+
+    fn seed(
+        s: &mut Session,
+        kind: DocumentType,
+        title: &str,
+        edit: impl FnOnce(&mut SonataDocument),
+    ) -> SonataDocument {
+        let path = s.workspace.document_path(&kind, title);
+        // `Workspace::relative` canonicalizes, so it needs the file to exist; strip the
+        // prefix by hand instead, the way `archive_tests::seed_doc` does.
+        let relative = path
+            .strip_prefix(&s.workspace.root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let mut doc = markdown::new_document(relative, kind, title.to_string(), String::new());
+        edit(&mut doc);
+        let raw = markdown::serialize(&doc).unwrap();
+        markdown::atomic_write(&path, &raw).unwrap();
+        doc.content_hash = Some(markdown::hash(&raw));
+        s.index.upsert(&doc).unwrap();
+        doc
+    }
+
+    fn raw_on_disk(s: &Session, doc: &SonataDocument) -> String {
+        fs::read_to_string(s.workspace.root.join(&doc.path)).unwrap()
+    }
+
+    #[test]
+    fn changing_type_moves_the_file_into_the_new_folder() {
+        let (_dir, mut s) = make_session();
+        let doc = seed(&mut s, DocumentType::Inbox, "Sort me out", |_| {});
+        let old_path = s.workspace.root.join(&doc.path);
+        assert!(old_path.exists());
+
+        let converted = change_type(&mut s, &doc.id, DocumentType::Task, None).unwrap();
+
+        assert_eq!(converted.document_type, DocumentType::Task);
+        assert!(converted.path.starts_with("tasks/"), "{}", converted.path);
+        assert!(!old_path.exists(), "the inbox file should be gone");
+        // The ULID is identity (ADR-003), so relationships survive the move.
+        assert_eq!(converted.id, doc.id);
+        assert_eq!(s.index.get(&doc.id).unwrap().path, converted.path);
+        assert_eq!(read_raw(&s, &doc.id).unwrap().title, "Sort me out");
+    }
+
+    #[test]
+    fn changing_type_drops_metadata_the_new_type_does_not_support() {
+        let (_dir, mut s) = make_session();
+        let doc = seed(&mut s, DocumentType::Task, "Renew passport", |doc| {
+            doc.status = Some(TaskStatus::InProgress);
+            doc.priority = Some(Priority::High);
+            doc.due = Some("2026-02-01".into());
+            doc.reminder = Some("2026-01-30".into());
+            doc.tags = vec!["admin".into()];
+        });
+
+        let converted = change_type(&mut s, &doc.id, DocumentType::Note, None).unwrap();
+
+        assert_eq!(converted.status, None);
+        assert_eq!(converted.due, None);
+        assert_eq!(converted.reminder, None);
+        assert_eq!(converted.priority, None);
+        // Tags are never dropped: every type accepts them.
+        assert_eq!(converted.tags, vec!["admin".to_string()]);
+
+        let raw = raw_on_disk(&s, &converted);
+        assert!(!raw.contains("status:"), "{raw}");
+        assert!(!raw.contains("due:"), "{raw}");
+        assert!(raw.contains("admin"), "{raw}");
+    }
+
+    #[test]
+    fn converting_an_idea_to_a_task_swaps_stage_for_a_status() {
+        let (_dir, mut s) = make_session();
+        let doc = seed(&mut s, DocumentType::Idea, "A spark", |doc| {
+            doc.stage = Some(IdeaStage::Developing);
+        });
+
+        let converted = change_type(&mut s, &doc.id, DocumentType::Task, None).unwrap();
+
+        assert_eq!(converted.stage, None);
+        assert!(!raw_on_disk(&s, &converted).contains("stage:"));
+        // The task gains no status here — conversion prunes, it does not invent defaults.
+        assert_eq!(converted.status, None);
+    }
+
+    #[test]
+    fn converting_to_a_bookmark_keeps_a_url_that_was_already_there() {
+        let (_dir, mut s) = make_session();
+        let doc = seed(&mut s, DocumentType::Inbox, "Read later", |doc| {
+            doc.bookmark = Some(Bookmark {
+                url: "https://example.com/a".into(),
+            });
+        });
+
+        let converted = change_type(&mut s, &doc.id, DocumentType::Bookmark, None).unwrap();
+        assert_eq!(
+            converted.bookmark.as_ref().map(|b| b.url.as_str()),
+            Some("https://example.com/a")
+        );
+        // And it reaches the list rows, which read `bookmark_url` from the index.
+        assert_eq!(
+            s.index.get(&doc.id).unwrap().bookmark.map(|b| b.url),
+            Some("https://example.com/a".to_string())
+        );
+    }
+
+    /// A type change must not yank a document out of the archive. `unarchive_doc` reads the
+    /// folder at unarchive time, so it lands in the new type's folder later.
+    #[test]
+    fn an_archived_document_keeps_its_place_in_the_archive() {
+        let (_dir, mut s) = make_session();
+        let doc = seed(&mut s, DocumentType::Idea, "Parked thought", |_| {});
+        archive_doc(&mut s, &doc.id).unwrap();
+
+        let converted = change_type(&mut s, &doc.id, DocumentType::Task, None).unwrap();
+        assert!(converted.archived);
+        assert!(converted.path.starts_with("archive/"), "{}", converted.path);
+
+        unarchive_doc(&mut s, &doc.id).unwrap();
+        let restored = read_raw(&s, &doc.id).unwrap();
+        assert!(restored.path.starts_with("tasks/"), "{}", restored.path);
+        assert!(!restored.archived);
+    }
+
+    #[test]
+    fn a_stale_hash_is_rejected() {
+        let (_dir, mut s) = make_session();
+        let doc = seed(&mut s, DocumentType::Inbox, "Sort me", |_| {});
+
+        let err = change_type(&mut s, &doc.id, DocumentType::Note, Some("nope")).unwrap_err();
+        assert!(matches!(err, SonataError::WriteConflict));
+        // Rejected before anything moved.
+        assert_eq!(
+            read_raw(&s, &doc.id).unwrap().document_type,
+            DocumentType::Inbox
+        );
+
+        let current = read_raw(&s, &doc.id).unwrap().content_hash.unwrap();
+        let converted = change_type(&mut s, &doc.id, DocumentType::Note, Some(&current)).unwrap();
+        assert_eq!(converted.document_type, DocumentType::Note);
+    }
+
+    #[test]
+    fn converting_to_the_same_type_is_a_no_op() {
+        let (_dir, mut s) = make_session();
+        let doc = seed(&mut s, DocumentType::Note, "Already a note", |_| {});
+
+        let converted = change_type(&mut s, &doc.id, DocumentType::Note, None).unwrap();
+        assert_eq!(converted.path, doc.path);
+        assert_eq!(converted.updated, doc.updated);
+    }
+
+    #[test]
+    fn a_same_named_file_in_the_target_folder_is_not_clobbered() {
+        let (_dir, mut s) = make_session();
+        let existing = seed(&mut s, DocumentType::Note, "Shared title", |_| {});
+        let incoming = seed(&mut s, DocumentType::Inbox, "Shared title", |_| {});
+        assert_ne!(existing.id, incoming.id);
+
+        let converted = change_type(&mut s, &incoming.id, DocumentType::Note, None).unwrap();
+
+        assert_ne!(converted.path, existing.path);
+        assert_eq!(read_raw(&s, &existing.id).unwrap().id, existing.id);
+        assert_eq!(read_raw(&s, &incoming.id).unwrap().id, incoming.id);
+    }
+
+    /// ADR-004 stores the parent edge on the child and ADR-003 fixes the ULID, so the
+    /// references survive and converting back restores the subtree intact.
+    #[test]
+    fn subtasks_keep_pointing_at_a_converted_parent() {
+        let (_dir, mut s) = make_session();
+        let parent = seed(&mut s, DocumentType::Task, "Parent", |_| {});
+        let child = seed(&mut s, DocumentType::Task, "Child", |doc| {
+            doc.parent = Some(parent.id.clone());
+        });
+
+        change_type(&mut s, &parent.id, DocumentType::Note, None).unwrap();
+
+        assert_eq!(
+            read_raw(&s, &child.id).unwrap().parent,
+            Some(parent.id.clone())
+        );
+        // Converting back makes the parent a task again with its subtree unchanged.
+        change_type(&mut s, &parent.id, DocumentType::Task, None).unwrap();
+        assert_eq!(s.index.children(&parent.id).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn an_unknown_id_is_an_error_rather_than_a_silent_no_op() {
+        let (_dir, mut s) = make_session();
+        assert!(change_type(&mut s, "01NOPE", DocumentType::Note, None).is_err());
+    }
+}
+
+#[cfg(test)]
 mod capture_tests {
     use super::*;
-    use crate::domain::DocumentType;
 
     fn today() -> String {
         chrono::Local::now()
