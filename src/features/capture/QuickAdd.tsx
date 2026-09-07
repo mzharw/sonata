@@ -3,17 +3,19 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
 import { useUi } from "../../stores/ui";
 import { sections } from "../search/views";
-import { DOCUMENT_TYPES, TYPE_SPECS, typeOptions } from "../../lib/documentTypes";
+import { DEFAULT_CAPTURE_TYPE, DEFAULT_FULLSCREEN_TYPE, TYPE_SPECS, type MetaField } from "../../lib/documentTypes";
 import { TagChipInput } from "../../components/TagChipInput";
 import { DueDateField } from "../../components/DueDateField";
 import { PrioritySelect } from "../../components/PrioritySelect";
-import { IconDropdown } from "../../components/IconDropdown";
-import { IconChevronDown, IconChevronUp, IconMaximize, IconPlus } from "../../components/icons";
+import { StatusSelect } from "../../components/StatusSelect";
+import { StageSelect } from "../../components/StageSelect";
+import { UrlField } from "../../components/UrlField";
+import { TypeSelect } from "../../components/TypeSelect";
+import { detectUrl, normalizeUrl, urlDomain } from "../../lib/url";
+import { IconBell, IconChevronDown, IconChevronUp, IconMaximize, IconPlus } from "../../components/icons";
 import { ALL_SHORTHAND_SUGGESTIONS, applyShorthandSuggestion, opensWithTypeKeyword, shorthandSuggestions, type ShorthandSuggestion } from "../../lib/shorthand";
 import { CAPTURE_HOTKEY, NEW_NOTE_HOTKEY, hasMod } from "../../lib/hotkeys";
-import type { DocumentType, Priority } from "../../types/domain";
-
-const TYPE_OPTIONS = typeOptions(DOCUMENT_TYPES);
+import type { DocumentType, IdeaStage, Priority, TaskStatus } from "../../types/domain";
 
 export function QuickAdd() {
   const ui = useUi();
@@ -28,15 +30,25 @@ export function QuickAdd() {
   const [flash, setFlash] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [expanded, setExpanded] = useState(false);
-  const [type, setType] = useState<DocumentType>("note");
+  // Capture lands in the inbox, matching the Rust default, which is what makes the
+  // Triage verb on an inbox row mean anything.
+  const [type, setType] = useState<DocumentType>(DEFAULT_CAPTURE_TYPE);
+  // Set once the user picks a type by hand, so URL detection stops second-guessing them.
+  const typeTouched = useRef(false);
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [due, setDue] = useState("");
   const [priority, setPriority] = useState<Priority>();
+  const [status, setStatus] = useState<TaskStatus>();
+  const [reminder, setReminder] = useState("");
+  const [stage, setStage] = useState<IdeaStage>();
+  const [url, setUrl] = useState("");
 
   const impliedType = sections.find(([view]) => view === ui.view)?.[2];
   const effectiveType = impliedType ?? type;
   const ImpliedIcon = impliedType ? TYPE_SPECS[impliedType].icon : undefined;
+  const spec = TYPE_SPECS[effectiveType];
+  const detectedUrl = detectUrl(text);
 
   const knownTags = useQuery({ queryKey: ["tags"], queryFn: native.tags });
   // A leading "task"/"note"/… word stays meaningful whenever the dropdown is what
@@ -78,10 +90,31 @@ export function QuickAdd() {
   // and bury the word "task" in the title. A view-implied type still wins outright.
   const capturePrefix = !impliedType && opensWithTypeKeyword(text) ? "" : TYPE_SPECS[effectiveType].capturePrefix;
 
+  /**
+   * A pasted link has no title, and the URL itself is not one. Capture the remaining words
+   * through the Rust shorthand parser so `#tag`/`@due:` still work, then attach the URL —
+   * guarded on `!doc.bookmark` so this becomes a no-op if `capture_input` ever learns to
+   * lift a bare URL itself.
+   */
+  const submitBookmark = async (link: string) => {
+    const rest = text
+      .split(/\s+/)
+      .filter((word) => word !== link)
+      .join(" ")
+      .trim();
+    const normalized = normalizeUrl(link);
+    const doc = await native.capture(`bookmark ${rest || urlDomain(normalized) || "Link"}`);
+    if (doc.bookmark) return doc;
+    return native.updateDocument({ ...doc, bookmark: { url: normalized } }, doc.contentHash);
+  };
+
   const submitShorthand = async () => {
     if (!text.trim()) return;
     try {
-      const doc = await native.capture(capturePrefix + text);
+      const doc =
+        effectiveType === "bookmark" && detectedUrl
+          ? await submitBookmark(detectedUrl)
+          : await native.capture(capturePrefix + text);
       setText("");
       setCaret(0);
       setSuggestOpen(false);
@@ -97,13 +130,31 @@ export function QuickAdd() {
     const finalTitle = title.trim() || text.trim();
     if (!finalTitle) return;
     try {
-      const doc = await native.createDocument({ type: effectiveType, title: finalTitle, tags, due: due || undefined, priority, body: "" });
+      // Only the fields this type carries are sent, so a due date typed under Task cannot
+      // ride along after switching the dropdown to Note. Rust prunes the rest regardless.
+      const has = (field: MetaField) => spec.meta.includes(field);
+      const doc = await native.createDocument({
+        type: effectiveType,
+        title: finalTitle,
+        tags,
+        body: "",
+        ...(has("due") && due ? { due } : {}),
+        ...(has("priority") && priority ? { priority } : {}),
+        ...(has("status") && status ? { status } : {}),
+        ...(has("reminder") && reminder ? { reminder } : {}),
+        ...(has("stage") && stage ? { stage } : {}),
+        ...(has("url") && url.trim() ? { bookmark: { url: normalizeUrl(url) } } : {}),
+      });
       setText("");
       setCaret(0);
       setTitle("");
       setTags([]);
       setDue("");
       setPriority(undefined);
+      setStatus(undefined);
+      setReminder("");
+      setStage(undefined);
+      setUrl("");
       setExpanded(false);
       afterCreate(doc.id);
     } catch (error) {
@@ -114,7 +165,7 @@ export function QuickAdd() {
 
   const openBlankFullEditor = async () => {
     try {
-      const doc = await native.createDocument({ type: "note", title: "New note", body: "" });
+      const doc = await native.createDocument({ type: DEFAULT_FULLSCREEN_TYPE, title: `New ${TYPE_SPECS[DEFAULT_FULLSCREEN_TYPE].label.toLowerCase()}`, body: "" });
       qc.invalidateQueries({ queryKey: ["documents"] });
       ui.openFullScreen(doc.id);
     } catch (error) {
@@ -165,13 +216,15 @@ export function QuickAdd() {
               </span>
             )
           ) : (
-            <IconDropdown
-              ariaLabel="Type"
+            <TypeSelect
               className="quick-add-type-dropdown"
               value={type}
-              options={TYPE_OPTIONS}
-              onChange={(v) => setType(v as DocumentType)}
-              showLabel={false}
+              onChange={(next) => {
+                typeTouched.current = true;
+                setType(next);
+              }}
+              compact
+              showChevron
             />
           )}
           <input
@@ -191,6 +244,12 @@ export function QuickAdd() {
               setHighlight(0);
               setShowShorthandReference(false);
               setSuggestOpen(true);
+              // Pasting a bare link is unambiguous enough to switch the type for, but
+              // never over a deliberate pick or a view that already implies one. The text
+              // is left alone — the icon flipping to a bookmark is the feedback.
+              if (!impliedType && !typeTouched.current && detectUrl(e.target.value)) {
+                setType("bookmark");
+              }
             }}
             onSelect={(e) => syncCaret(e.currentTarget)}
             onFocus={(e) => {
@@ -262,7 +321,7 @@ export function QuickAdd() {
           )}
           {text.trim() && suggestions.length === 0 && (
             <span className="quick-add-hint">
-              <kbd>Enter</kbd> to add
+              <kbd>Enter</kbd> to {effectiveType === "bookmark" && detectedUrl ? "save link" : "add"}
             </span>
           )}
           {!text.trim() && !focused && (
@@ -284,20 +343,28 @@ export function QuickAdd() {
             <label className="form-field-label" htmlFor="quick-add-title">Title</label>
             <input id="quick-add-title" className="field" placeholder="Defaults to the text above" value={title} onChange={(e) => setTitle(e.target.value)} />
           </div>
-          <div className="form-field">
-            <span className="form-field-label">Tags</span>
-            <TagChipInput value={tags} onChange={setTags} />
-          </div>
-          <div className="form-row">
-            <div className="form-field">
-              <span className="form-field-label">Due date</span>
-              <DueDateField value={due} onChange={setDue} />
-            </div>
-            <div className="form-field">
-              <span className="form-field-label">Priority</span>
-              <PrioritySelect value={priority} onChange={setPriority} />
-            </div>
-          </div>
+          {(() => {
+            // Same exhaustive-map shape as DocumentMetaBar, but wrapped in the form's
+            // labelled fields rather than the bare pills.
+            const fields: Record<MetaField, { label: string; control: React.ReactNode }> = {
+              tags: { label: "Tags", control: <TagChipInput value={tags} onChange={setTags} /> },
+              status: { label: "Status", control: <StatusSelect value={status} onChange={setStatus} /> },
+              priority: { label: "Priority", control: <PrioritySelect value={priority} onChange={setPriority} /> },
+              due: { label: "Due date", control: <DueDateField value={due} onChange={setDue} /> },
+              reminder: {
+                label: "Reminder",
+                control: <DueDateField value={reminder} onChange={setReminder} icon={IconBell} placeholder="No reminder" label="reminder (not yet delivered)" />,
+              },
+              stage: { label: "Stage", control: <StageSelect value={stage} onChange={setStage} /> },
+              url: { label: "Link", control: <UrlField value={url} onChange={setUrl} /> },
+            };
+            return spec.meta.map((field) => (
+              <div className="form-field" key={field}>
+                <span className="form-field-label">{fields[field].label}</span>
+                {fields[field].control}
+              </div>
+            ));
+          })()}
           <button className="primary" onClick={() => void submitStructured()}><IconPlus size={14} /> Add</button>
         </div>
       </div>

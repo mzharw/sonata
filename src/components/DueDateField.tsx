@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconCalendar, IconChevronLeft, IconChevronRight, IconX } from "./icons";
+import type { ComponentType } from "react";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const POPOVER_WIDTH = 240;
@@ -63,7 +64,24 @@ function computePlacement(rect: DOMRect): Placement {
   return { top, left };
 }
 
-export function DueDateField({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+/**
+ * A date picker. Generalized past "due date" so the task reminder can reuse it — a second
+ * calendar implementation would be the same code with a different icon.
+ */
+export function DueDateField({
+  value,
+  onChange,
+  icon: Icon = IconCalendar,
+  placeholder = "No date",
+  label = "due date",
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  icon?: ComponentType<{ size?: number }>;
+  placeholder?: string;
+  /** Names the field in the trigger, clear button and dialog labels, e.g. "reminder". */
+  label?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [viewMonth, setViewMonth] = useState(() => firstOfMonth(value ? parseISO(value) : new Date()));
@@ -115,18 +133,18 @@ export function DueDateField({ value, onChange }: { value: string; onChange: (va
 
   return (
     <div className="date-picker" ref={containerRef}>
-      <button type="button" className={`date-picker-trigger${value ? " has-value" : ""}`} aria-haspopup="dialog" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
-        <IconCalendar size={14} />
-        <span>{value ? formatDisplay(value) : "No date"}</span>
+      <button type="button" className={`date-picker-trigger${value ? " has-value" : ""}`} aria-haspopup="dialog" aria-expanded={open} aria-label={`Choose ${label}`} onClick={() => setOpen((o) => !o)}>
+        <Icon size={14} />
+        <span>{value ? formatDisplay(value) : placeholder}</span>
       </button>
       {value && (
-        <button type="button" className="icon-btn" aria-label="Clear due date" title="Clear due date" onMouseDown={(e) => e.preventDefault()} onClick={() => onChange("")}>
+        <button type="button" className="icon-btn" aria-label={`Clear ${label}`} title={`Clear ${label}`} onMouseDown={(e) => e.preventDefault()} onClick={() => onChange("")}>
           <IconX size={11} />
         </button>
       )}
       {open && placement &&
         createPortal(
-          <div ref={popoverRef} className="date-picker-popover" role="dialog" aria-label="Choose due date" style={{ top: placement.top, left: placement.left }}>
+          <div ref={popoverRef} className="date-picker-popover" role="dialog" aria-label={`Choose ${label}`} style={{ top: placement.top, left: placement.left }}>
             <div className="date-picker-shortcuts">
               <button type="button" onClick={() => shortcut(0)}>Today</button>
               <button type="button" onClick={() => shortcut(1)}>Tomorrow</button>

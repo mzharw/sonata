@@ -3,14 +3,16 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { native } from "../../lib/native";
+import { useUi } from "../../stores/ui";
 import { QuickAdd } from "./QuickAdd";
 
 vi.mock("../../lib/native", () => ({
-  native: { tags: vi.fn(), capture: vi.fn(), createDocument: vi.fn() },
+  native: { tags: vi.fn(), capture: vi.fn(), createDocument: vi.fn(), updateDocument: vi.fn() },
 }));
 
 beforeEach(() => {
   vi.resetAllMocks();
+  useUi.setState({ view: "all" });
   vi.mocked(native.tags).mockResolvedValue([
     { tag: "errand", count: 4 },
     { tag: "home", count: 7 },
@@ -67,8 +69,9 @@ it("captures on Enter once there is nothing left to complete", async () => {
   type(input, "Buy milk #errand");
   fireEvent.keyDown(input, { key: "Enter" });
 
-  // The type dropdown defaults to Note, so it supplies the prefix.
-  await waitFor(() => expect(native.capture).toHaveBeenCalledWith("note Buy milk #errand"));
+  // Capture defaults to Inbox, which is the Rust default too, so no prefix is needed —
+  // plain capture no longer silently files everything as a note.
+  await waitFor(() => expect(native.capture).toHaveBeenCalledWith("Buy milk #errand"));
 });
 
 it("offers the @due: scaffold and then only date keywords the backend resolves", async () => {
@@ -164,4 +167,70 @@ it("shows the complete shorthand reference with Ctrl+Space", async () => {
   fireEvent.keyDown(input, { key: " ", code: "Space", ctrlKey: true });
 
   expect((await screen.findAllByRole("option")).map((option) => option.textContent)).toEqual(expect.arrayContaining(["tasktype", "#tagtag", "@due:YYYY-MM-DDdue date"]));
+});
+
+it("switches to Bookmark when a bare link is pasted, and files it as one", async () => {
+  vi.mocked(native.capture).mockResolvedValue({ id: "doc-1", bookmark: { url: "https://example.com/a" } } as never);
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  type(input, "https://example.com/a");
+  fireEvent.keyDown(input, { key: "Enter" });
+
+  // The URL is not the title, so the domain stands in for one.
+  await waitFor(() => expect(native.capture).toHaveBeenCalledWith("bookmark example.com"));
+});
+
+it("keeps the words around a link as its title", async () => {
+  vi.mocked(native.capture).mockResolvedValue({ id: "doc-1", bookmark: { url: "https://example.com/a" } } as never);
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  // A link with prose around it is prose, so the type must not flip and the text is
+  // captured verbatim rather than being turned into a bookmark.
+  type(input, "read https://example.com/a later");
+  fireEvent.keyDown(input, { key: "Enter" });
+
+  await waitFor(() => expect(native.capture).toHaveBeenCalledWith("read https://example.com/a later"));
+});
+
+it("attaches the url when capture did not already carry one", async () => {
+  vi.mocked(native.capture).mockResolvedValue({ id: "doc-1", contentHash: "h1" } as never);
+  vi.mocked(native.updateDocument).mockResolvedValue({ id: "doc-1" } as never);
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  type(input, "example.com");
+  fireEvent.keyDown(input, { key: "Enter" });
+
+  await waitFor(() =>
+    expect(native.updateDocument).toHaveBeenCalledWith(
+      expect.objectContaining({ bookmark: { url: "https://example.com" } }),
+      "h1",
+    ),
+  );
+});
+
+it("does not override a type the user picked by hand", async () => {
+  vi.mocked(native.capture).mockResolvedValue({ id: "doc-1" } as never);
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  fireEvent.click(screen.getByRole("button", { name: "Type" }));
+  // The option's handler sits on the button inside the `role="option"` li.
+  fireEvent.click(screen.getByRole("button", { name: "Note" }));
+  type(input, "https://example.com/a");
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(native.capture).toHaveBeenCalledWith("note https://example.com/a"));
+});
+
+it("lets the view-implied type win over a pasted link", async () => {
+  useUi.setState({ view: "tasks" });
+  vi.mocked(native.capture).mockResolvedValue({ id: "doc-1" } as never);
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  type(input, "https://example.com/a");
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(native.capture).toHaveBeenCalledWith("task https://example.com/a"));
 });

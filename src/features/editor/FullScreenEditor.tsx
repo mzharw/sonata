@@ -6,13 +6,26 @@ import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/Mark
 import { AttachmentButton } from "../../components/AttachmentButton";
 import { attachToDocument, chooseAndImportAttachment, importClipboardImage } from "../../lib/attachments";
 import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
+import { useTypeConversion } from "../../hooks/useTypeConversion";
+import { BacklinksPanel } from "../../components/BacklinksPanel";
+import { TYPE_SPECS } from "../../lib/documentTypes";
+import { wordCount } from "../../lib/wordCount";
 import { native } from "../../lib/native";
 import { IconArrowLeft, IconCheck, IconCopy, IconPencilLine, IconMarkdown } from "../../components/icons";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
 
 export function FullScreenEditor({ id }: { id: string }) {
   const ui = useUi();
-  const { doc: full, setDoc: setFull, status: saveStatus, save } = useDocumentEditor(id);
+  const { doc: full, setDoc: setFull, replaceDoc: replaceFull, status: saveStatus, save } = useDocumentEditor(id);
+  const spec = full ? TYPE_SPECS[full.type] : undefined;
+  const { convert } = useTypeConversion();
+
+  // Flush any pending edit first: the conversion rewrites the file, and a later autosave
+  // holding the pre-conversion path would recreate it at its old location.
+  const convertTo = async (to: Parameters<typeof convert>[1]) => {
+    await save();
+    await convert({ id }, to, replaceFull);
+  };
   const bodyEditorRef = useRef<MarkdownEditorHandle>(null);
   const [rawActive, setRawActive] = useState(false);
   const attachmentUrls = useAttachmentUrls(full?.body ?? "", full?.cover);
@@ -84,11 +97,13 @@ export function FullScreenEditor({ id }: { id: string }) {
       {full && (
         <>
           <div className="fs-body">
-            <div className="note-cover">
-              {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
-              <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
-            </div>
-            <DocumentMetaBar doc={full} onChange={setFull} />
+            {(spec?.longForm || full.cover) && (
+              <div className="note-cover">
+                {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
+                <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
+              </div>
+            )}
+            <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
             <MarkdownEditor
               ref={bodyEditorRef}
               ariaLabel="Note body"
@@ -102,12 +117,19 @@ export function FullScreenEditor({ id }: { id: string }) {
               onPasteImage={pasteImage}
               onOpenAttachment={revealAttachment}
             />
+            {spec?.longForm && <BacklinksPanel id={id} />}
           </div>
           <div className="editor-footer">
             <span className="editor-timestamps">
               <span title={exactTimestamp(full.created)}>Created {absoluteDate(full.created)}</span>
               <span aria-hidden="true">·</span>
               <span title={exactTimestamp(full.updated)}>Edited {relativeTime(full.updated)}</span>
+              {spec?.longForm && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="editor-wordcount">{wordCount(full.body)} words</span>
+                </>
+              )}
             </span>
             <span className={`save-status save-status-${saveStatus}`}>
               {saveStatus === "saving" && "Saving…"}

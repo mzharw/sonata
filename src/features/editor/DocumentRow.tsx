@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
 import type { DocumentSummary } from "../../types/domain";
@@ -10,11 +10,17 @@ import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/Mark
 import { AttachmentButton } from "../../components/AttachmentButton";
 import { attachToDocument, chooseAndImportAttachment, importClipboardImage } from "../../lib/attachments";
 import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
-import { TYPE_SPECS } from "../../lib/documentTypes";
+import { TYPE_SPECS, type RowChip } from "../../lib/documentTypes";
+import { TypeSelect } from "../../components/TypeSelect";
+import { BacklinksPanel } from "../../components/BacklinksPanel";
+import { useTypeConversion } from "../../hooks/useTypeConversion";
 import { STATUS_OPTIONS } from "../../lib/statusOptions";
+import { stageLabel } from "../../lib/stageOptions";
+import { urlDomain } from "../../lib/url";
+import { wordCount } from "../../lib/wordCount";
 import { renderMarkdownPreview } from "../../lib/renderMarkdown";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
-import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconMaximize, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown } from "../../components/icons";
+import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconMaximize, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown, IconLink, IconExternalLink } from "../../components/icons";
 import type { TaskStatus } from "../../types/domain";
 
 const HOVER_PREVIEW_DELAY_MS = 450;
@@ -41,8 +47,17 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
   const ui = useUi();
   const qc = useQueryClient();
   const expanded = ui.expandedId === doc.id;
-  const { doc: full, setDoc: setFull, status: saveStatus, save } = useDocumentEditor(expanded ? doc.id : undefined);
-  const TypeIcon = TYPE_SPECS[doc.type].icon;
+  const { doc: full, setDoc: setFull, replaceDoc: replaceFull, status: saveStatus, save } = useDocumentEditor(expanded ? doc.id : undefined);
+  const spec = TYPE_SPECS[doc.type];
+  const TypeIcon = spec.icon;
+  const { convert } = useTypeConversion();
+
+  // Flush any pending edit before converting, so the conversion reads a current file and
+  // cannot trip a write conflict against its own unsaved changes.
+  const convertTo = async (to: Parameters<typeof convert>[1]) => {
+    if (expanded) await save();
+    await convert(doc, to, expanded ? replaceFull : undefined);
+  };
   const bodyEditorRef = useRef<MarkdownEditorHandle>(null);
   const headerSentinelRef = useRef<HTMLSpanElement>(null);
   const [rawActive, setRawActive] = useState(false);
@@ -155,44 +170,66 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
         }}
         onMouseLeave={cancelPreview}
       >
-        {doc.type === "task" ? (
+        {spec.affordance === "checkbox" ? (
           <button className="check" aria-label={doc.status === "completed" ? "Mark as todo" : "Mark as completed"} title={doc.status === "completed" ? "Mark as todo" : "Mark as completed"} onClick={(e) => { e.stopPropagation(); onToggleComplete(doc); }}>
             {doc.status === "completed" ? <IconStatusDone /> : <IconStatusTodo />}
           </button>
         ) : (
-          <span className="check" aria-hidden="true" title={doc.type}><TypeIcon size={15} /></span>
+          <span className="check" aria-hidden="true" title={spec.label}><TypeIcon size={15} /></span>
         )}
         <div className="doc-main">
           <b className={doc.status === "completed" ? "is-completed" : undefined}>{doc.title || "Untitled"}</b>
           {(() => {
-            const showStatus = doc.status && doc.status !== "todo" && !(doc.type === "task" && doc.status === "completed");
+            // Which chips a row shows is the type's business, so a note carrying legacy
+            // `status:`/`due:` frontmatter stops advertising fields it no longer owns.
+            const showStatus = doc.status && doc.status !== "todo" && !(spec.affordance === "checkbox" && doc.status === "completed");
             const statusMeta = showStatus ? STATUS_OPTIONS.find((o) => o.value === doc.status) : undefined;
             const StatusIcon = statusMeta?.icon;
-            const hasMeta = doc.tags.length > 0 || doc.due || doc.childCount > 0 || (doc.priority && doc.priority !== "none") || showStatus;
-            if (!hasMeta) return null;
+            const domain = doc.bookmark?.url ? urlDomain(doc.bookmark.url) : undefined;
+            const chips: Record<RowChip, ReactNode> = {
+              status: showStatus ? (
+                <span className={`status-inline status-${doc.status}`}>
+                  {StatusIcon && <StatusIcon size={11} fill="currentColor" />} {statusMeta?.label}
+                </span>
+              ) : null,
+              stage: doc.stage ? (
+                <span className={`stage-inline stage-${doc.stage}`}>{stageLabel(doc.stage)}</span>
+              ) : null,
+              domain: domain ? (
+                <span className="domain-inline" title={doc.bookmark?.url}>
+                  <IconLink size={11} /> {domain}
+                </span>
+              ) : null,
+              tags: doc.tags.length > 0 ? (
+                <>
+                  {doc.tags.slice(0, MAX_VISIBLE_TAGS).map((t) => (
+                    <span className="tag-inline" key={t}>#{t}</span>
+                  ))}
+                  {doc.tags.length > MAX_VISIBLE_TAGS && <span className="tag-inline more">+{doc.tags.length - MAX_VISIBLE_TAGS}</span>}
+                </>
+              ) : null,
+              due: doc.due ? (() => {
+                const { label, overdue } = dueMeta(doc.due, doc.status);
+                return <span className={`due-inline${overdue ? " overdue" : ""}`} title={doc.due}>{label}</span>;
+              })() : null,
+              // Children keep pointing at a converted parent by design, so the count can
+              // be non-zero for a type that has no subtasks — the spec decides, not the count.
+              progress: doc.childCount > 0 ? (
+                <span className={`progress-inline${doc.completedChildCount === doc.childCount ? " done" : ""}`}>{doc.completedChildCount}/{doc.childCount}</span>
+              ) : null,
+              priority: doc.priority && doc.priority !== "none" ? (
+                <span className={`priority-inline priority-${doc.priority}`}>
+                  <IconFlag size={11} fill="currentColor" /> {doc.priority}
+                </span>
+              ) : null,
+            };
+            const visible = spec.rowChips.filter((chip) => chips[chip] !== null);
+            if (visible.length === 0) return null;
             return (
               <small>
-                {showStatus && (
-                  <span className={`status-inline status-${doc.status}`}>
-                    {StatusIcon && <StatusIcon size={11} fill="currentColor" />} {statusMeta?.label}
-                  </span>
-                )}
-                {doc.tags.slice(0, MAX_VISIBLE_TAGS).map((t) => (
-                  <span className="tag-inline" key={t}>#{t}</span>
+                {visible.map((chip) => (
+                  <Fragment key={chip}>{chips[chip]}</Fragment>
                 ))}
-                {doc.tags.length > MAX_VISIBLE_TAGS && <span className="tag-inline more">+{doc.tags.length - MAX_VISIBLE_TAGS}</span>}
-                {doc.due && (() => {
-                  const { label, overdue } = dueMeta(doc.due, doc.status);
-                  return <span className={`due-inline${overdue ? " overdue" : ""}`} title={doc.due}>{label}</span>;
-                })()}
-                {doc.childCount > 0 && (
-                  <span className={`progress-inline${doc.completedChildCount === doc.childCount ? " done" : ""}`}>{doc.completedChildCount}/{doc.childCount}</span>
-                )}
-                {doc.priority && doc.priority !== "none" && (
-                  <span className={`priority-inline priority-${doc.priority}`}>
-                    <IconFlag size={11} fill="currentColor" /> {doc.priority}
-                  </span>
-                )}
               </small>
             );
           })()}
@@ -201,9 +238,35 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
           <IconPin size={15} fill={doc.pinned ? "currentColor" : "none"} />
         </button>
         <div className="doc-actions">
-          <span className="doc-status-action" onClick={(e) => e.stopPropagation()}>
-            <StatusSelect value={doc.status} onChange={(status) => onUpdateStatus(doc, status)} compact />
-          </span>
+          {spec.meta.includes("status") && (
+            <span className="doc-status-action" onClick={(e) => e.stopPropagation()}>
+              <StatusSelect value={doc.status} onChange={(status) => onUpdateStatus(doc, status)} compact />
+            </span>
+          )}
+          {doc.type === "bookmark" && doc.bookmark?.url && (
+            <button
+              className="icon-btn"
+              aria-label="Open link in browser"
+              title={doc.bookmark.url}
+              onClick={(e) => {
+                e.stopPropagation();
+                void native.openExternal(doc.bookmark!.url);
+              }}
+            >
+              <IconExternalLink size={15} />
+            </button>
+          )}
+          {spec.convertsTo.length > 0 && (
+            <span className="doc-type-action" onClick={(e) => e.stopPropagation()}>
+              <TypeSelect
+                value={doc.type}
+                types={[doc.type, ...spec.convertsTo]}
+                onChange={(to) => void convertTo(to)}
+                ariaLabel={`${spec.convertVerb} "${doc.title || "Untitled"}"`}
+                compact
+              />
+            </span>
+          )}
           <button
             className="icon-btn"
             aria-label="Archive"
@@ -273,15 +336,17 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
       {expanded && !full && <div className="editor-loading">Loading…</div>}
       {expanded && full && (
         <article className="editor">
-          <div className="note-cover">
-            {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
-            <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
-          </div>
+          {(spec.longForm || full.cover) && (
+            <div className="note-cover">
+              {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
+              <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
+            </div>
+          )}
           <div className="editor-title-wrap">
             <input className="editor-title" aria-label="Title" value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} onBlur={() => void save()} />
             <IconPencil className="editor-title-pen" size={15} aria-hidden="true" />
           </div>
-          <DocumentMetaBar doc={full} onChange={setFull} />
+          <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
           <MarkdownEditor
             ref={bodyEditorRef}
             ariaLabel="Note body"
@@ -300,6 +365,12 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
               <span title={exactTimestamp(full.created)}>Created {absoluteDate(full.created)}</span>
               <span aria-hidden="true">·</span>
               <span title={exactTimestamp(full.updated)}>Edited {relativeTime(full.updated)}</span>
+              {spec.longForm && (
+                <>
+                  <span aria-hidden="true">·</span>
+                  <span className="editor-wordcount">{wordCount(full.body)} words</span>
+                </>
+              )}
             </span>
             <span className={`save-status save-status-${saveStatus}`}>
               {saveStatus === "saving" && "Saving…"}
@@ -331,6 +402,7 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
               <button className="icon-btn" aria-label="Open in full-screen editor" title="Open in full-screen editor" onClick={() => ui.openFullScreen(doc.id)}><IconMaximize size={15} /></button>
             </span>
           </div>
+          {spec.longForm && <BacklinksPanel id={doc.id} />}
         </article>
       )}
     </li>

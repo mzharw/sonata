@@ -70,5 +70,20 @@ export function useDocumentEditor(id: string | undefined) {
     debounceRef.current = setTimeout(() => void persist(), AUTOSAVE_DELAY_MS);
   };
 
-  return { doc, setDoc, status, save: persist };
+  /**
+   * Adopts a document written outside this hook — currently a type conversion, which
+   * returns a new `path` and `contentHash`.
+   *
+   * Deliberately *not* dirty: `update_document` writes to `document.path` verbatim, so a
+   * pending autosave holding the pre-conversion path would recreate the file at its old
+   * location. Clearing the timer and the dirty flag is what prevents that.
+   */
+  const replaceDoc = (next: SonataDocument) => {
+    dirtyRef.current = false;
+    clearTimeout(debounceRef.current);
+    docRef.current = next;
+    setDocState(next);
+  };
+
+  return { doc, setDoc, replaceDoc, status, save: persist };
 }
