@@ -1,0 +1,19 @@
+.resize-handle {
+  position: fixed;
+  z-index: 100;
+  inset: 0 auto 0 0;
+  width: 6px;
+  cursor: ew-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.resize-handle:hover,
+.resize-handle.is-dragging {
+  background: color-mix(in srgb, #58705f 62%, transparent);
+}
+
+.resize-handle.is-dragging {
+  background: color-mix(in srgb, #2c4538 78%, transparent);
+}

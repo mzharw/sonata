@@ -1,0 +1,19 @@
+html.edge-trigger-window,
+html.edge-trigger-window body,
+html.edge-trigger-window #root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent !important;
+}
+
+.edge-trigger {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+.edge-trigger.is-hovered {
+  background: rgba(80, 112, 95, 0.8);
+}

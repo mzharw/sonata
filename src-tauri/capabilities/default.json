@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Capabilities for Sonata's main window.",
+  "windows": ["main", "capture", "edge-trigger"],
+  "permissions": ["core:default", "dialog:allow-open", "notification:default", "global-shortcut:allow-register", "global-shortcut:allow-unregister"]
+}

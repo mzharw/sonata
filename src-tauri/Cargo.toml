@@ -1,0 +1,41 @@
+[package]
+name = "sonata"
+version = "0.1.0"
+description = "Compose your thoughts."
+authors = ["Sonata contributors"]
+edition = "2021"
+
+[lib]
+name = "sonata_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+default = []
+custom-protocol = ["tauri/custom-protocol"]
+desktop = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-plugin-global-shortcut", "dep:tauri-plugin-notification", "dep:tauri-plugin-single-instance"]
+
+[build-dependencies]
+tauri-build = { version = "2.4.1", features = [] }
+
+[dependencies]
+chrono = { version = "0.4.40", features = ["serde"] }
+notify = "8.2.0"
+regex = "1.11.1"
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+serde_yaml = "0.9.34"
+sha2 = "0.10.9"
+tauri = { version = "2.11.1", features = ["tray-icon", "image-png"], optional = true }
+tauri-plugin-dialog = { version = "2.4.0", optional = true }
+tauri-plugin-global-shortcut = { version = "2.3.0", optional = true }
+tauri-plugin-notification = { version = "2.3.1", optional = true }
+tauri-plugin-single-instance = { version = "2.3.4", optional = true }
+thiserror = "2.0.12"
+ulid = "1.2.1"
+
+[dev-dependencies]
+tempfile = "3.19.1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59.0", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
