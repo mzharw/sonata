@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useUi, activeFilterCount, type Filters } from "../../stores/ui";
+import { native } from "../../lib/native";
 import { STATUS_OPTIONS } from "../../lib/statusOptions";
 import { PRIORITY_OPTIONS } from "../../lib/priorityOptions";
 import { IconFilter, IconCheck } from "../../components/icons";
@@ -33,6 +35,7 @@ export function FilterMenu() {
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const { filters } = ui;
+  const tags = useQuery({ queryKey: ["tags"], queryFn: native.tags });
   const narrowing = activeFilterCount(filters);
 
   useEffect(() => {
@@ -103,6 +106,20 @@ export function FilterMenu() {
               />
             ))}
           </nav>
+          {tags.data && tags.data.length > 0 && (
+            <>
+              <p className="eyebrow">TAGS <small>match all</small></p>
+              <nav>
+                {tags.data.map(({ tag }) => {
+                  const selected = filters.tags?.includes(tag) ?? false;
+                  return <Row key={tag} label={`#${tag}`} selected={selected} onSelect={() => {
+                    const next = selected ? filters.tags?.filter((value) => value !== tag) : [...(filters.tags ?? []), tag];
+                    set({ tags: next?.length ? next : undefined });
+                  }} />;
+                })}
+              </nav>
+            </>
+          )}
           <p className="eyebrow">SORT BY</p>
           <nav>
             {SORT_OPTIONS.map(([value, label]) => (

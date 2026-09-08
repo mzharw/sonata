@@ -13,6 +13,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   useUi.setState({ view: "all", tag: undefined, filters: NO_FILTERS });
   vi.mocked(native.listDocuments).mockResolvedValue([]);
+  vi.mocked(native.tags).mockResolvedValue([{ tag: "work", count: 2 }, { tag: "urgent", count: 1 }]);
 });
 afterEach(cleanup);
 
@@ -47,6 +48,15 @@ it("badges the trigger with how many filters are narrowing the list, but not the
 
   fireEvent.click(screen.getByRole("menuitemradio", { name: /^High/ }));
   expect(screen.getByText("1")).toBeTruthy();
+});
+
+it("accumulates tags as an all-tags filter", async () => {
+  mount(<FilterMenu />);
+  openMenu();
+  await waitFor(() => expect(screen.getByRole("menuitemradio", { name: "#work" })).toBeTruthy());
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "#work" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "#urgent" }));
+  expect(useUi.getState().filters).toEqual({ tags: ["work", "urgent"], sort: "default" });
 });
 
 it("clears back to the defaults on reset", () => {

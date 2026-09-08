@@ -164,6 +164,10 @@ impl Index {
             sql.push_str(" AND EXISTS(SELECT 1 FROM document_tags dt WHERE dt.document_id=d.id AND dt.tag=?)");
             values.push(markdown::normalize_tag(tag));
         }
+        for tag in query.tags.as_deref().unwrap_or_default() {
+            sql.push_str(" AND EXISTS(SELECT 1 FROM document_tags dt WHERE dt.document_id=d.id AND dt.tag=?)");
+            values.push(markdown::normalize_tag(tag));
+        }
         // "Not completed" only means something for a type that carries a status, and the
         // NULL guard is load-bearing: `NULL != 'completed'` is NULL, not true, so without it
         // SQLite dropped every due document that had no status — a due inbox item was
@@ -389,6 +393,17 @@ mod list_filter_tests {
             },
         );
         assert_eq!(found, vec!["urgent one"]);
+    }
+
+    #[test]
+    fn filters_by_every_selected_tag() {
+        let index = index();
+        seed_with(&index, DocumentType::Note, "both", |doc| doc.tags = vec!["work".into(), "urgent".into()]);
+        seed_with(&index, DocumentType::Note, "work only", |doc| doc.tags = vec!["work".into()]);
+        seed_with(&index, DocumentType::Note, "urgent only", |doc| doc.tags = vec!["urgent".into()]);
+
+        let found = titles(&index, &SearchQuery { tags: Some(vec!["WORK".into(), "urgent".into()]), ..Default::default() });
+        assert_eq!(found, vec!["both"]);
     }
 
     #[test]

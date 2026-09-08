@@ -43,6 +43,7 @@ export function DocumentList({ search }: { search: string }) {
         // they are spread last — picking "Todo" inside Completed shows todos.
         ...(filters.status ? { status: filters.status } : {}),
         ...(filters.priority ? { priority: filters.priority } : {}),
+        ...(filters.tags?.length ? { tags: filters.tags } : {}),
         sort: filters.sort,
       }),
   });

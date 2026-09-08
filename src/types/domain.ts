@@ -8,4 +8,4 @@ export interface Attachment { path: string; name: string; mediaType: string; dat
 export interface DocumentSummary extends Omit<SonataDocument, "body"> { childCount: number; completedChildCount: number; }
 /** `"default"` defers to the listed type's natural order, resolved in Rust from its `TypeSpec`. */
 export type SortOrder = "default" | "due" | "updated" | "created" | "priority" | "title";
-export interface SearchQuery { text?: string; type?: DocumentType; tag?: string; status?: TaskStatus; priority?: Priority; due?: "today" | "upcoming"; archived?: boolean; sort?: SortOrder; }
+export interface SearchQuery { text?: string; type?: DocumentType; tag?: string; tags?: string[]; status?: TaskStatus; priority?: Priority; due?: "today" | "upcoming"; archived?: boolean; sort?: SortOrder; }

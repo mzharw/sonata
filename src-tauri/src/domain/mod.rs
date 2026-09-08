@@ -301,6 +301,7 @@ pub struct SearchQuery {
     #[serde(rename = "type")]
     pub document_type: Option<DocumentType>,
     pub tag: Option<String>,
+    pub tags: Option<Vec<String>>,
     pub status: Option<TaskStatus>,
     pub priority: Option<Priority>,
     pub due: Option<String>,

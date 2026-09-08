@@ -4,10 +4,10 @@ export type View = "inbox" | "all" | "today" | "upcoming" | "tasks" | "notes" | 
 
 export interface ConfirmRequest { message: string; confirmLabel: string; onConfirm: () => void }
 /** Refinements layered on top of whichever view is selected. */
-export interface Filters { status?: TaskStatus; priority?: Priority; sort: SortOrder }
+export interface Filters { status?: TaskStatus; priority?: Priority; tags?: string[]; sort: SortOrder }
 export const NO_FILTERS: Filters = { sort: "default" };
 /** How many refinements are narrowing the list — sort reorders, so it doesn't count. */
-export const activeFilterCount = (f: Filters) => (f.status ? 1 : 0) + (f.priority ? 1 : 0);
+export const activeFilterCount = (f: Filters) => (f.status ? 1 : 0) + (f.priority ? 1 : 0) + (f.tags?.length ? 1 : 0);
 export interface ToastRequest { message: string; onUndo?: () => void }
 
 interface Ui {
