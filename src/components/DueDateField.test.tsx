@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { DueDateField } from "./DueDateField";
 
 afterEach(cleanup);
@@ -36,35 +36,126 @@ describe("picking a day", () => {
 describe("picking a time", () => {
   it("keeps the day that was already chosen", () => {
     const onChange = mount("2026-09-10");
-    fireEvent.change(screen.getByLabelText("Time for reminder"), { target: { value: "15:30" } });
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "15" }));
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Minute" })).getByRole("option", { name: "30" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-10T15:30");
   });
 
-  // A time with no day is not a moment, so the first time picked implies today.
-  it("implies today when no day has been chosen", () => {
+  it("does not allow a time before a day has been chosen", () => {
     const onChange = mount("");
-    fireEvent.change(screen.getByLabelText("Time for reminder"), { target: { value: "08:15" } });
-    expect(onChange).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T08:15$/));
+    expect((within(screen.getByRole("listbox", { name: "Minute" })).getByRole("option", { name: "15" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
   });
 
   it("can be cleared back to a plain date, which the backend fires in the morning", () => {
     const onChange = mount("2026-09-10T15:30");
-    expect(screen.queryByText("from 9:00")).toBeNull();
+    expect(screen.queryByText("No time set")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Clear time" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-10");
   });
 
-  it("says where a date-only reminder will land", () => {
+  it("shows 00:00 in the picker without assigning a time to a date-only reminder", () => {
     mount("2026-09-10");
-    expect(screen.getByText("from 9:00")).toBeTruthy();
+    expect(screen.getByLabelText("Time for reminder").textContent).toBe("00:00");
     expect(screen.queryByRole("button", { name: "Clear time" })).toBeNull();
+  });
+
+  it("uses 00 minutes when an hour is chosen first", () => {
+    const onChange = mount("2026-09-10");
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "08" }));
+    expect(onChange).toHaveBeenCalledWith("2026-09-10T08:00");
+  });
+
+  it("keeps the selected minute when changing the hour", () => {
+    const onChange = mount("2026-09-10T08:15");
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "09" }));
+    expect(onChange).toHaveBeenCalledWith("2026-09-10T09:15");
+  });
+
+  it("stays open while an hour or minute grid is scrolled", () => {
+    mount("2026-09-10");
+    fireEvent.scroll(screen.getByRole("listbox", { name: "Minute" }));
+    expect(screen.getByRole("listbox", { name: "Hour" })).toBeTruthy();
+    expect(screen.getByRole("listbox", { name: "Minute" })).toBeTruthy();
+  });
+
+  it("can be closed with Done after choosing a date and time", () => {
+    const onChange = mount("2026-09-10");
+    fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "08" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(onChange).toHaveBeenCalledWith("2026-09-10T08:00");
+    expect(screen.queryByRole("dialog", { name: "Choose reminder" })).toBeNull();
+  });
+});
+
+const OPTION_HEIGHT = 30;
+const WHEEL_HEIGHT = 150;
+const EMPTY_RECT = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 } as DOMRect;
+
+// jsdom does no layout, so the wheels and their options are given a measurable
+// geometry: option `i` sits at `i * OPTION_HEIGHT`, scrolled by the wheel.
+function stubWheelLayout() {
+  const realRect = HTMLElement.prototype.getBoundingClientRect;
+  const realClientHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+  const isWheel = (el: Element | null) => el?.getAttribute("role") === "listbox";
+  HTMLElement.prototype.getBoundingClientRect = function () {
+    if (isWheel(this)) return { ...EMPTY_RECT, height: WHEEL_HEIGHT, bottom: WHEEL_HEIGHT };
+    const wheel = this.parentElement;
+    if (!isWheel(wheel)) return EMPTY_RECT;
+    const top = Array.prototype.indexOf.call(wheel!.children, this) * OPTION_HEIGHT - wheel!.scrollTop;
+    return { ...EMPTY_RECT, top, bottom: top + OPTION_HEIGHT, height: OPTION_HEIGHT };
+  };
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      return isWheel(this) ? WHEEL_HEIGHT : 0;
+    },
+  });
+  return () => {
+    HTMLElement.prototype.getBoundingClientRect = realRect;
+    if (realClientHeight) Object.defineProperty(HTMLElement.prototype, "clientHeight", realClientHeight);
+  };
+}
+
+/** Where the wheel must be scrolled for `index` of the middle copy to sit centred. */
+function centredScrollTop(index: number, length: number) {
+  return (2 * length + index) * OPTION_HEIGHT - (WHEEL_HEIGHT - OPTION_HEIGHT) / 2;
+}
+
+describe("opening the time wheels", () => {
+  let restoreLayout = () => {};
+  beforeEach(() => {
+    restoreLayout = stubWheelLayout();
+  });
+  afterEach(() => restoreLayout());
+
+  it("scrolls the chosen hour and minute to the middle", () => {
+    mount("2026-09-10T15:30");
+    expect(screen.getByRole("listbox", { name: "Hour" }).scrollTop).toBe(centredScrollTop(15, 24));
+    expect(screen.getByRole("listbox", { name: "Minute" }).scrollTop).toBe(centredScrollTop(30, 60));
+  });
+
+  // The wheels repeat, so even 00:00 has to start in the middle copy: opening at the
+  // very top would leave the user unable to scroll up.
+  it("starts in the middle copy when no time is set yet", () => {
+    mount("2026-09-10");
+    expect(screen.getByRole("listbox", { name: "Hour" }).scrollTop).toBe(centredScrollTop(0, 24));
+    expect(screen.getByRole("listbox", { name: "Minute" }).scrollTop).toBe(centredScrollTop(0, 60));
+  });
+
+  it("leaves the wheel where the user left it when a new hour is clicked", () => {
+    mount("2026-09-10T15:30");
+    const hours = screen.getByRole("listbox", { name: "Hour" });
+    hours.scrollTop = 900;
+    fireEvent.click(within(hours).getByRole("option", { name: "09" }));
+    expect(hours.scrollTop).toBe(900);
   });
 });
 
 describe("reading a hand-written value", () => {
   it("selects the day and time from a value written with a space", () => {
     mount("2026-09-10 15:30");
-    expect((screen.getByLabelText("Time for reminder") as HTMLInputElement).value).toBe("15:30");
+    expect(screen.getByLabelText("Time for reminder").textContent).toBe("15:30");
     expect(screen.getByRole("button", { name: "Choose reminder" }).textContent).toMatch(/Sep 10.*3:30/);
   });
 });

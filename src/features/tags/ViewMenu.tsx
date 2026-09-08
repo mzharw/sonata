@@ -12,6 +12,11 @@ export function ViewMenu() {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // Tags filter the current library view; they are not themselves the name of this
+  // compact top-bar control. Retaining the last library label also prevents a long tag
+  // from widening the header.
+  const lastLibraryView = useRef(ui.view === "tag" ? "all" : ui.view);
+  if (ui.view !== "tag") lastLibraryView.current = ui.view;
 
   useEffect(() => {
     if (!open) return;
@@ -32,7 +37,7 @@ export function ViewMenu() {
     };
   }, [open]);
 
-  const label = ui.view === "tag" ? `# ${ui.tag}` : sections.find(([view]) => view === ui.view)?.[1];
+  const label = sections.find(([view]) => view === lastLibraryView.current)?.[1] ?? "Library";
 
   return (
     <div className="view-menu" ref={containerRef}>

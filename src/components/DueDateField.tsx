@@ -1,13 +1,18 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type UIEvent } from "react";
 import { createPortal } from "react-dom";
 import { IconCalendar, IconChevronLeft, IconChevronRight, IconX } from "./icons";
 import type { ComponentType } from "react";
-import { formatDateTime, joinDateTime, splitDateTime, todayISO } from "../lib/dateTime";
+import { formatDateTime, joinDateTime, splitDateTime } from "../lib/dateTime";
 
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const POPOVER_WIDTH = 240;
+const DATE_TIME_POPOVER_WIDTH = 464;
 const POPOVER_HEIGHT = 320;
 const MARGIN = 6;
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+const MINUTES = Array.from({ length: 60 }, (_, minute) => minute);
+const WHEEL_COPIES = [0, 1, 2, 3, 4];
+const PRIMARY_WHEEL_COPY = 2;
 
 function parseISO(iso: string): Date {
   const [y, m, d] = iso.split("-").map(Number);
@@ -46,7 +51,7 @@ interface Placement {
   left: number;
 }
 
-function computePlacement(rect: DOMRect): Placement {
+function computePlacement(rect: DOMRect, popoverWidth: number): Placement {
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
   const openUpward = spaceBelow < POPOVER_HEIGHT + MARGIN && spaceAbove > spaceBelow;
@@ -54,9 +59,23 @@ function computePlacement(rect: DOMRect): Placement {
     ? Math.max(MARGIN, rect.top - POPOVER_HEIGHT - MARGIN)
     : Math.min(rect.bottom + MARGIN, window.innerHeight - POPOVER_HEIGHT - MARGIN);
   let left = rect.left;
-  if (left + POPOVER_WIDTH > window.innerWidth - MARGIN) left = window.innerWidth - POPOVER_WIDTH - MARGIN;
+  if (left + popoverWidth > window.innerWidth - MARGIN) left = window.innerWidth - popoverWidth - MARGIN;
   if (left < MARGIN) left = MARGIN;
   return { top, left };
+}
+
+/**
+ * Scrolls a wheel so `index` of the primary copy sits in the middle of its viewport,
+ * which is also where the circular scroll handler expects the user to start.
+ */
+function centerWheel(wheel: HTMLDivElement | null, length: number, index: number) {
+  const option = wheel?.children[PRIMARY_WHEEL_COPY * length + index];
+  if (!wheel || !option) return;
+  const wheelTop = wheel.getBoundingClientRect().top;
+  const optionRect = option.getBoundingClientRect();
+  // Adjusting by a delta is correct wherever the wheel already sits, and never has to
+  // clamp at 0: the primary copy is two whole ranges down.
+  wheel.scrollTop += optionRect.top - wheelTop - (wheel.clientHeight - optionRect.height) / 2;
 }
 
 /**
@@ -86,16 +105,42 @@ export function DueDateField({
    */
   withTime?: boolean;
 }) {
-  // Two pickers can be mounted at once (an expanded row plus the Quick Add form), so
-  // the label association cannot be built from the field name.
-  const timeInputId = useId();
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const { date: datePart, time: timePart } = splitDateTime(value);
+  const [selectedHour, setSelectedHour] = useState(0);
+  const [selectedMinute, setSelectedMinute] = useState(0);
   const [viewMonth, setViewMonth] = useState(() => firstOfMonth(datePart ? parseISO(datePart) : new Date()));
   const containerRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const hourListRef = useRef<HTMLDivElement>(null);
+  const minuteListRef = useRef<HTMLDivElement>(null);
   const today = startOfDay(new Date());
+
+  useEffect(() => {
+    setSelectedHour(timePart ? Number(timePart.slice(0, 2)) : 0);
+    setSelectedMinute(timePart ? Number(timePart.slice(3, 5)) : 0);
+  }, [timePart]);
+
+  // The wheels are only mounted once a placement has been measured, so this waits for
+  // one rather than for `open` alone. It deliberately ignores later hour/minute
+  // changes: re-centering under a click would yank the wheel the user is reading.
+  useLayoutEffect(() => {
+    if (!open || !withTime || !placement) return;
+    centerWheel(hourListRef.current, HOURS.length, selectedHour);
+    centerWheel(minuteListRef.current, MINUTES.length, selectedMinute);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, placement, withTime]);
+
+  const keepWheelCircular = (event: UIEvent<HTMLDivElement>) => {
+    const wheel = event.currentTarget;
+    const segmentHeight = wheel.scrollHeight / WHEEL_COPIES.length;
+    if (!segmentHeight) return;
+    // Keep the user in the middle three copies. Moving by two full, identical ranges
+    // preserves the visual position while giving momentum scrolling room to slow down.
+    if (wheel.scrollTop < segmentHeight * 0.5) wheel.scrollTop += segmentHeight * 2;
+    else if (wheel.scrollTop > segmentHeight * 4.5) wheel.scrollTop -= segmentHeight * 2;
+  };
 
   useEffect(() => {
     if (!open) {
@@ -104,7 +149,7 @@ export function DueDateField({
     }
     setViewMonth(firstOfMonth(datePart ? parseISO(datePart) : new Date()));
     const rect = containerRef.current?.getBoundingClientRect();
-    if (rect) setPlacement(computePlacement(rect));
+    if (rect) setPlacement(computePlacement(rect, withTime ? DATE_TIME_POPOVER_WIDTH : POPOVER_WIDTH));
 
     const close = () => setOpen(false);
     const onMouseDown = (e: MouseEvent) => {
@@ -117,27 +162,45 @@ export function DueDateField({
     };
     document.addEventListener("mousedown", onMouseDown);
     document.addEventListener("keydown", onKeyDown);
-    window.addEventListener("scroll", close, true);
+    // The time picker has scrollable hour/minute grids. Only a scroll outside this
+    // popover means its anchor may have moved; scrolling a grid is an interaction.
+    const onScroll = (e: Event) => {
+      if (popoverRef.current?.contains(e.target as Node)) return;
+      close();
+    };
+    window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("mousedown", onMouseDown);
       document.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", close);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, withTime]);
 
   // Picking a day keeps whatever time is already set, so choosing "tomorrow" on a 15:30
   // reminder does not silently drop the 15:30.
   const pick = (date: Date) => {
     onChange(joinDateTime(toISO(date), withTime ? timePart : ""));
-    setOpen(false);
+    if (!withTime) setOpen(false);
   };
 
-  // A time on its own is not a moment, so the first time picked implies today. The
-  // popover stays open — you have said when, not yet which day.
-  const pickTime = (time: string) => onChange(joinDateTime(datePart || todayISO(), time));
+  const saveTime = (hour: number, minute: number) => {
+    if (!datePart) return;
+    onChange(joinDateTime(datePart, `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`));
+  };
+  const pickHour = (hour: number) => {
+    setSelectedHour(hour);
+    saveTime(hour, selectedMinute);
+  };
+  const pickMinute = (minute: number) => {
+    setSelectedMinute(minute);
+    saveTime(selectedHour, minute);
+  };
+  const clearTime = () => {
+    onChange(joinDateTime(datePart, ""));
+  };
 
   const shortcut = (offsetDays: number) => {
     const d = new Date();
@@ -158,60 +221,64 @@ export function DueDateField({
       )}
       {open && placement &&
         createPortal(
-          <div ref={popoverRef} className="date-picker-popover" role="dialog" aria-label={`Choose ${label}`} style={{ top: placement.top, left: placement.left }}>
-            <div className="date-picker-shortcuts">
+          <div ref={popoverRef} className={`date-picker-popover${withTime ? " with-time" : ""}`} role="dialog" aria-label={`Choose ${label}`} style={{ top: placement.top, left: placement.left }}>
+            {!withTime && <div className="date-picker-shortcuts">
               <button type="button" onClick={() => shortcut(0)}>Today</button>
               <button type="button" onClick={() => shortcut(1)}>Tomorrow</button>
               <button type="button" onClick={() => shortcut(7)}>Next week</button>
-            </div>
-            {withTime && (
-              <div className="date-picker-time">
-                <label htmlFor={timeInputId}>Time</label>
-                <input
-                  id={timeInputId}
-                  type="time"
-                  aria-label={`Time for ${label}`}
-                  value={timePart}
-                  onChange={(e) => pickTime(e.target.value)}
-                />
-                {timePart ? (
-                  <button
-                    type="button"
-                    className="icon-btn"
-                    aria-label="Clear time"
-                    title="Clear the time — the reminder falls back to the morning"
-                    onClick={() => onChange(joinDateTime(datePart, ""))}
-                  >
-                    <IconX size={11} />
-                  </button>
-                ) : (
-                  <small>from 9:00</small>
-                )}
+            </div>}
+            <div className="date-time-picker-content">
+              <div className="date-picker-calendar">
+              {withTime && <div className="date-picker-shortcuts">
+                <button type="button" onClick={() => shortcut(0)}>Today</button>
+                <button type="button" onClick={() => shortcut(1)}>Tomorrow</button>
+                <button type="button" onClick={() => shortcut(7)}>Next week</button>
+              </div>}
+              <div className="date-picker-header">
+                <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => setViewMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><IconChevronLeft size={14} /></button>
+                <span>{viewMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</span>
+                <button type="button" className="icon-btn" aria-label="Next month" onClick={() => setViewMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}><IconChevronRight size={14} /></button>
               </div>
-            )}
-            <div className="date-picker-header">
-              <button type="button" className="icon-btn" aria-label="Previous month" onClick={() => setViewMonth((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))}><IconChevronLeft size={14} /></button>
-              <span>{viewMonth.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</span>
-              <button type="button" className="icon-btn" aria-label="Next month" onClick={() => setViewMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))}><IconChevronRight size={14} /></button>
+              <div className="date-picker-weekdays">
+                {WEEKDAYS.map((d) => <span key={d}>{d}</span>)}
+              </div>
+              <div className="date-picker-grid">
+                {buildGrid(viewMonth).map((date) => {
+                  const iso = toISO(date);
+                  return (
+                    <button type="button" key={iso} className={`${date.getMonth() === viewMonth.getMonth() ? "" : "outside"}${sameDay(date, today) ? " today" : ""}${datePart === iso ? " selected" : ""}`} onClick={() => pick(date)}>{date.getDate()}</button>
+                  );
+                })}
+              </div>
+              </div>
+              {withTime && (
+                <div className="custom-time-picker" role="group" aria-label={`Time picker for ${label}`}>
+                  <div className="custom-time-picker-toolbar">
+                    <output aria-label={`Time for ${label}`}>{timePart || "00:00"}</output>
+                    {timePart && <button type="button" className="icon-btn" aria-label="Clear time" title="Clear time" onClick={clearTime}><IconX size={11} /></button>}
+                  </div>
+                  <div className="custom-time-picker-column">
+                    <strong>Hour</strong>
+                    <div ref={hourListRef} className="custom-time-picker-options" role="listbox" aria-label="Hour" onScroll={keepWheelCircular}>
+                      {WHEEL_COPIES.flatMap((copy) => HOURS.map((hour) => {
+                        const primary = copy === PRIMARY_WHEEL_COPY;
+                        return <button type="button" key={`${copy}-${hour}`} role={primary ? "option" : undefined} aria-selected={primary ? selectedHour === hour : undefined} aria-hidden={!primary} tabIndex={primary ? undefined : -1} disabled={!datePart} onClick={() => pickHour(hour)}>{String(hour).padStart(2, "0")}</button>;
+                      }))}
+                    </div>
+                  </div>
+                  <div className="custom-time-picker-column">
+                    <strong>Minute</strong>
+                    <div ref={minuteListRef} className="custom-time-picker-options" role="listbox" aria-label="Minute" onScroll={keepWheelCircular}>
+                      {WHEEL_COPIES.flatMap((copy) => MINUTES.map((minute) => {
+                        const primary = copy === PRIMARY_WHEEL_COPY;
+                        return <button type="button" key={`${copy}-${minute}`} role={primary ? "option" : undefined} aria-selected={primary ? selectedMinute === minute : undefined} aria-hidden={!primary} tabIndex={primary ? undefined : -1} disabled={!datePart} onClick={() => pickMinute(minute)}>{String(minute).padStart(2, "0")}</button>;
+                      }))}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="date-picker-weekdays">
-              {WEEKDAYS.map((d) => <span key={d}>{d}</span>)}
-            </div>
-            <div className="date-picker-grid">
-              {buildGrid(viewMonth).map((date) => {
-                const iso = toISO(date);
-                return (
-                  <button
-                    type="button"
-                    key={iso}
-                    className={`${date.getMonth() === viewMonth.getMonth() ? "" : "outside"}${sameDay(date, today) ? " today" : ""}${datePart === iso ? " selected" : ""}`}
-                    onClick={() => pick(date)}
-                  >
-                    {date.getDate()}
-                  </button>
-                );
-              })}
-            </div>
+            {withTime && <div className="date-time-picker-actions"><button type="button" className="primary" onClick={() => setOpen(false)}>Done</button></div>}
           </div>,
           document.body,
         )}
