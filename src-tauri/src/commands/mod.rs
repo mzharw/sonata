@@ -220,6 +220,17 @@ pub fn update_document(
     let mut guard = session(&state)?;
     let s = guard.as_mut().unwrap();
     let path = s.workspace.root.join(&document.path);
+    // Acknowledgement is tied to the current schedule value. Editing a date must re-arm it,
+    // even if the user later chooses a value that was acknowledged in the past.
+    if path.exists() {
+        let existing = markdown::parse(&document.path, &fs::read_to_string(&path)?)?;
+        if existing.due != document.due {
+            document.acknowledged_due = None;
+        }
+        if existing.reminder != document.reminder {
+            document.acknowledged_reminder = None;
+        }
+    }
     if let Some(expected) = expected_hash {
         if path.exists() && markdown::hash(&fs::read_to_string(&path)?) != expected {
             return Err(SonataError::WriteConflict);
@@ -236,6 +247,36 @@ pub fn update_document(
     s.index.upsert(&document)?;
     app.emit("document:changed", &document.id).ok();
     Ok(document)
+}
+#[tauri::command]
+pub fn acknowledge_document_attention(
+    id: String,
+    due: Option<String>,
+    reminder: Option<String>,
+    state: State<AppState>,
+    app: AppHandle,
+) -> Result<()> {
+    let mut guard = session(&state)?;
+    let s = guard.as_mut().unwrap();
+    let mut doc = read_raw(s, &id)?;
+    let mut changed = false;
+
+    // The UI sends the exact value it evaluated. Re-checking it after reading the canonical
+    // Markdown prevents a delayed click from acknowledging a newly edited deadline.
+    if due.is_some() && due == doc.due && doc.acknowledged_due != due {
+        doc.acknowledged_due = due;
+        changed = true;
+    }
+    if reminder.is_some() && reminder == doc.reminder && doc.acknowledged_reminder != reminder {
+        doc.acknowledged_reminder = reminder;
+        changed = true;
+    }
+    if changed {
+        doc.updated = markdown::now();
+        write_raw(s, &mut doc)?;
+        app.emit("document:changed", id).ok();
+    }
+    Ok(())
 }
 #[tauri::command]
 pub fn set_parent(

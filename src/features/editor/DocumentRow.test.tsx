@@ -38,7 +38,7 @@ function mount(over: Partial<DocumentSummary> = {}) {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <ul>
-        <DocumentRow doc={summary(over)} isActive={false} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} />
+        <DocumentRow doc={summary(over)} isActive={false} onAcknowledge={() => {}} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} />
       </ul>
     </QueryClientProvider>,
   );

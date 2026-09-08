@@ -106,8 +106,11 @@ export function DueDateField({
   withTime?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  // Reminder changes are a draft until Done. A past value therefore cannot be autosaved
+  // and delivered by the native watcher while the user is still choosing a time.
+  const [draft, setDraft] = useState(value);
   const [placement, setPlacement] = useState<Placement | null>(null);
-  const { date: datePart, time: timePart } = splitDateTime(value);
+  const { date: datePart, time: timePart } = splitDateTime(withTime ? draft : value);
   const [selectedHour, setSelectedHour] = useState(0);
   const [selectedMinute, setSelectedMinute] = useState(0);
   const [viewMonth, setViewMonth] = useState(() => firstOfMonth(datePart ? parseISO(datePart) : new Date()));
@@ -121,6 +124,10 @@ export function DueDateField({
     setSelectedHour(timePart ? Number(timePart.slice(0, 2)) : 0);
     setSelectedMinute(timePart ? Number(timePart.slice(3, 5)) : 0);
   }, [timePart]);
+
+  useEffect(() => {
+    if (!open) setDraft(value);
+  }, [open, value]);
 
   // The wheels are only mounted once a placement has been measured, so this waits for
   // one rather than for `open` alone. It deliberately ignores later hour/minute
@@ -182,13 +189,15 @@ export function DueDateField({
   // Picking a day keeps whatever time is already set, so choosing "tomorrow" on a 15:30
   // reminder does not silently drop the 15:30.
   const pick = (date: Date) => {
-    onChange(joinDateTime(toISO(date), withTime ? timePart : ""));
+    const next = joinDateTime(toISO(date), withTime ? timePart : "");
+    if (withTime) setDraft(next);
+    else onChange(next);
     if (!withTime) setOpen(false);
   };
 
   const saveTime = (hour: number, minute: number) => {
     if (!datePart) return;
-    onChange(joinDateTime(datePart, `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`));
+    setDraft(joinDateTime(datePart, `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`));
   };
   const pickHour = (hour: number) => {
     setSelectedHour(hour);
@@ -199,7 +208,7 @@ export function DueDateField({
     saveTime(selectedHour, minute);
   };
   const clearTime = () => {
-    onChange(joinDateTime(datePart, ""));
+    setDraft(joinDateTime(datePart, ""));
   };
 
   const shortcut = (offsetDays: number) => {
@@ -207,6 +216,16 @@ export function DueDateField({
     d.setDate(d.getDate() + offsetDays);
     pick(d);
   };
+
+  // Date-only reminders use the same 09:00 default as the Rust reminder watcher.
+  const reminderMoment = (() => {
+    if (!withTime || !datePart) return undefined;
+    const [year, month, day] = datePart.split("-").map(Number);
+    const [hour, minute] = timePart ? timePart.split(":").map(Number) : [9, 0];
+    const moment = new Date(year, month - 1, day, hour, minute);
+    return Number.isNaN(moment.getTime()) ? undefined : moment;
+  })();
+  const reminderIsPast = Boolean(reminderMoment && reminderMoment.getTime() <= Date.now());
 
   return (
     <div className="date-picker" ref={containerRef}>
@@ -278,7 +297,10 @@ export function DueDateField({
                 </div>
               )}
             </div>
-            {withTime && <div className="date-time-picker-actions"><button type="button" className="primary" onClick={() => setOpen(false)}>Done</button></div>}
+            {withTime && <div className={`date-time-picker-actions${reminderIsPast ? " has-warning" : ""}`}>
+              {reminderIsPast && <p className="date-time-picker-warning" role="alert">Choose a future reminder time before continuing.</p>}
+              <button type="button" className="primary" disabled={reminderIsPast} onClick={() => { onChange(draft); setOpen(false); }}>Done</button>
+            </div>}
           </div>,
           document.body,
         )}

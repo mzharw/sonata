@@ -80,6 +80,7 @@ pub fn run() {
             commands::read_document,
             commands::create_document,
             commands::update_document,
+            commands::acknowledge_document_attention,
             commands::set_parent,
             commands::archive_document,
             commands::unarchive_document,

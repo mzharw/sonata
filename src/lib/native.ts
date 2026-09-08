@@ -29,6 +29,8 @@ export const native = {
   readDocument: (id: string) => invoke<SonataDocument>("read_document", { id }),
   createDocument: (input: Partial<SonataDocument>) => invoke<SonataDocument>("create_document", { input }),
   updateDocument: (document: SonataDocument, expectedHash?: string) => invoke<SonataDocument>("update_document", { document, expectedHash }),
+  acknowledgeDocumentAttention: (id: string, due?: string, reminder?: string) =>
+    invoke<void>("acknowledge_document_attention", { id, due, reminder }),
   setParent: (childId: string, parentId: string | null) => invoke<void>("set_parent", { childId, parentId }),
   archive: (id: string) => invoke<void>("archive_document", { id }),
   unarchive: (id: string) => invoke<void>("unarchive_document", { id }),

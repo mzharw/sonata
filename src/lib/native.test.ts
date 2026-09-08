@@ -92,6 +92,15 @@ describe("type conversion and external links", () => {
     });
   });
 
+  it("acknowledges only the attention values the UI evaluated", async () => {
+    await native.acknowledgeDocumentAttention("01ABC", "2026-09-08", "2026-09-08T09:30");
+    expect(invoke).toHaveBeenCalledWith("acknowledge_document_attention", {
+      id: "01ABC",
+      due: "2026-09-08",
+      reminder: "2026-09-08T09:30",
+    });
+  });
+
   it("opens a link through the opener plugin", async () => {
     await native.openExternal("https://example.com");
     expect(openUrl).toHaveBeenCalledWith("https://example.com");

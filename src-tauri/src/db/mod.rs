@@ -7,8 +7,8 @@ use rusqlite::{params, Connection, OptionalExtension};
 use std::path::Path;
 /// Bumped whenever `SCHEMA` changes shape. A mismatch drops and recreates the derived
 /// tables rather than patching them, because `indexer::rebuild` refills them anyway.
-const SCHEMA_VERSION: i64 = 3;
-const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,path TEXT NOT NULL UNIQUE,type TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,status TEXT,priority TEXT,due_at TEXT,reminder_at TEXT,parent_id TEXT,archived INTEGER NOT NULL DEFAULT 0,pinned INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,content_hash TEXT NOT NULL,stage TEXT,bookmark_url TEXT); CREATE TABLE IF NOT EXISTS document_tags(document_id TEXT NOT NULL,tag TEXT NOT NULL,PRIMARY KEY(document_id,tag)); CREATE INDEX IF NOT EXISTS idx_document_tags_tag ON document_tags(tag); CREATE TABLE IF NOT EXISTS document_links(source_id TEXT NOT NULL,target_id TEXT,raw_target TEXT NOT NULL,PRIMARY KEY(source_id,raw_target)); CREATE TABLE IF NOT EXISTS index_errors(path TEXT PRIMARY KEY,error_type TEXT NOT NULL,message TEXT NOT NULL,updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_documents_reminder ON documents(reminder_at) WHERE reminder_at IS NOT NULL; CREATE TABLE IF NOT EXISTS delivered_reminders(document_id TEXT PRIMARY KEY,reminder_at TEXT NOT NULL,delivered_at TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(id UNINDEXED,title,body,path);";
+const SCHEMA_VERSION: i64 = 4;
+const SCHEMA: &str = "CREATE TABLE IF NOT EXISTS documents(id TEXT PRIMARY KEY,path TEXT NOT NULL UNIQUE,type TEXT NOT NULL,title TEXT NOT NULL,body TEXT NOT NULL,status TEXT,priority TEXT,due_at TEXT,reminder_at TEXT,parent_id TEXT,archived INTEGER NOT NULL DEFAULT 0,pinned INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,content_hash TEXT NOT NULL,stage TEXT,bookmark_url TEXT,acknowledged_due TEXT,acknowledged_reminder TEXT); CREATE TABLE IF NOT EXISTS document_tags(document_id TEXT NOT NULL,tag TEXT NOT NULL,PRIMARY KEY(document_id,tag)); CREATE INDEX IF NOT EXISTS idx_document_tags_tag ON document_tags(tag); CREATE TABLE IF NOT EXISTS document_links(source_id TEXT NOT NULL,target_id TEXT,raw_target TEXT NOT NULL,PRIMARY KEY(source_id,raw_target)); CREATE TABLE IF NOT EXISTS index_errors(path TEXT PRIMARY KEY,error_type TEXT NOT NULL,message TEXT NOT NULL,updated_at TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_documents_reminder ON documents(reminder_at) WHERE reminder_at IS NOT NULL; CREATE TABLE IF NOT EXISTS delivered_reminders(document_id TEXT PRIMARY KEY,reminder_at TEXT NOT NULL,delivered_at TEXT NOT NULL); CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(id UNINDEXED,title,body,path);";
 
 pub struct Index {
     conn: Connection,
@@ -68,7 +68,7 @@ impl Index {
         // silently breaking the document until a manual rebuild. `ON CONFLICT(id) DO UPDATE`
         // below is exactly the right behavior for this: update the existing row in place.
         let tx = self.conn.unchecked_transaction()?;
-        tx.execute("INSERT INTO documents(id,path,type,title,body,status,priority,due_at,reminder_at,parent_id,archived,pinned,created_at,updated_at,content_hash,stage,bookmark_url) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17) ON CONFLICT(id) DO UPDATE SET path=excluded.path,type=excluded.type,title=excluded.title,body=excluded.body,status=excluded.status,priority=excluded.priority,due_at=excluded.due_at,reminder_at=excluded.reminder_at,parent_id=excluded.parent_id,archived=excluded.archived,pinned=excluded.pinned,updated_at=excluded.updated_at,content_hash=excluded.content_hash,stage=excluded.stage,bookmark_url=excluded.bookmark_url", params![doc.id,doc.path,serde_json::to_string(&doc.document_type).unwrap_or_default().trim_matches('"'),doc.title,doc.body,doc.status.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string()),doc.priority.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string()),doc.due,doc.reminder,doc.parent,doc.archived as i32,doc.pinned as i32,doc.created,doc.updated,doc.content_hash,doc.stage.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string()),doc.bookmark.as_ref().map(|b| b.url.clone())])?;
+        tx.execute("INSERT INTO documents(id,path,type,title,body,status,priority,due_at,reminder_at,parent_id,archived,pinned,created_at,updated_at,content_hash,stage,bookmark_url,acknowledged_due,acknowledged_reminder) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19) ON CONFLICT(id) DO UPDATE SET path=excluded.path,type=excluded.type,title=excluded.title,body=excluded.body,status=excluded.status,priority=excluded.priority,due_at=excluded.due_at,reminder_at=excluded.reminder_at,parent_id=excluded.parent_id,archived=excluded.archived,pinned=excluded.pinned,updated_at=excluded.updated_at,content_hash=excluded.content_hash,stage=excluded.stage,bookmark_url=excluded.bookmark_url,acknowledged_due=excluded.acknowledged_due,acknowledged_reminder=excluded.acknowledged_reminder", params![doc.id,doc.path,serde_json::to_string(&doc.document_type).unwrap_or_default().trim_matches('"'),doc.title,doc.body,doc.status.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string()),doc.priority.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string()),doc.due,doc.reminder,doc.parent,doc.archived as i32,doc.pinned as i32,doc.created,doc.updated,doc.content_hash,doc.stage.as_ref().map(|v| serde_json::to_string(v).unwrap_or_default().trim_matches('"').to_string()),doc.bookmark.as_ref().map(|b| b.url.clone()),doc.acknowledged_due,doc.acknowledged_reminder])?;
         tx.execute("DELETE FROM document_tags WHERE document_id=?1", [&doc.id])?;
         for tag in &doc.tags {
             tx.execute(
@@ -117,10 +117,10 @@ impl Index {
         Ok(())
     }
     pub fn get(&self, id: &str) -> Result<SonataDocument> {
-        self.conn.query_row("SELECT id,path,type,title,body,status,priority,due_at,reminder_at,parent_id,archived,created_at,updated_at,content_hash,pinned,stage,bookmark_url FROM documents WHERE id=?1", [id], row_doc).map_err(Into::into)
+        self.conn.query_row("SELECT id,path,type,title,body,status,priority,due_at,reminder_at,parent_id,archived,created_at,updated_at,content_hash,pinned,stage,bookmark_url,acknowledged_due,acknowledged_reminder FROM documents WHERE id=?1", [id], row_doc).map_err(Into::into)
     }
     pub fn list(&self, query: &SearchQuery) -> Result<Vec<DocumentSummary>> {
-        let mut sql = String::from("SELECT d.id,d.path,d.type,d.title,d.body,d.status,d.priority,d.due_at,d.reminder_at,d.parent_id,d.archived,d.created_at,d.updated_at,d.content_hash,d.pinned,d.stage,d.bookmark_url,(SELECT count(*) FROM documents c WHERE c.parent_id=d.id),(SELECT count(*) FROM documents c WHERE c.parent_id=d.id AND c.status='completed') FROM documents d WHERE 1=1");
+        let mut sql = String::from("SELECT d.id,d.path,d.type,d.title,d.body,d.status,d.priority,due_at,reminder_at,parent_id,d.archived,d.created_at,d.updated_at,d.content_hash,d.pinned,d.stage,d.bookmark_url,d.acknowledged_due,d.acknowledged_reminder,(SELECT count(*) FROM documents c WHERE c.parent_id=d.id),(SELECT count(*) FROM documents c WHERE c.parent_id=d.id AND c.status='completed') FROM documents d WHERE 1=1");
         let mut values: Vec<String> = vec![];
         if let Some(a) = query.archived {
             sql.push_str(" AND d.archived=?");
@@ -219,8 +219,8 @@ impl Index {
         let rows = statement.query_map(rusqlite::params_from_iter(values), |r| {
             Ok(DocumentSummary {
                 document: row_doc(r)?,
-                child_count: r.get(17)?,
-                completed_child_count: r.get(18)?,
+                child_count: r.get(19)?,
+                completed_child_count: r.get(20)?,
             })
         })?;
         rows.collect::<std::result::Result<Vec<_>, _>>()
@@ -315,6 +315,8 @@ fn row_doc(r: &rusqlite::Row<'_>) -> rusqlite::Result<SonataDocument> {
         priority: priority.and_then(|v| serde_yaml::from_str::<Priority>(&v).ok()),
         due: r.get(7)?,
         reminder: r.get(8)?,
+        acknowledged_due: r.get(17)?,
+        acknowledged_reminder: r.get(18)?,
         parent: r.get(9)?,
         stage: stage.and_then(|v| serde_yaml::from_str::<IdeaStage>(&v).ok()),
         links: None,

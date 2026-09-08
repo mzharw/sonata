@@ -10,8 +10,25 @@ use std::{fs, path::Path};
 use ulid::Ulid;
 
 const KNOWN: &[&str] = &[
-    "id", "type", "title", "tags", "created", "updated", "archived", "pinned", "status", "stage",
-    "priority", "due", "reminder", "parent", "links", "bookmark", "cover",
+    "id",
+    "type",
+    "title",
+    "tags",
+    "created",
+    "updated",
+    "archived",
+    "pinned",
+    "status",
+    "stage",
+    "priority",
+    "due",
+    "reminder",
+    "acknowledged_due",
+    "acknowledged_reminder",
+    "parent",
+    "links",
+    "bookmark",
+    "cover",
 ];
 // `completed` is deliberately absent. KNOWN means "this key is represented by a struct
 // field"; nothing parses or re-serializes `completed`, so listing it here excluded it from
@@ -124,6 +141,8 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         .and_then(|v| serde_yaml::from_value::<Bookmark>(v.clone()).ok());
     let due = get("due");
     let reminder = get("reminder");
+    let acknowledged_due = get("acknowledged_due");
+    let acknowledged_reminder = get("acknowledged_reminder");
     let cover = get("cover");
     let unknown = map
         .into_iter()
@@ -145,6 +164,8 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         stage,
         due,
         reminder,
+        acknowledged_due,
+        acknowledged_reminder,
         parent,
         links,
         bookmark,
@@ -178,6 +199,8 @@ pub fn new_document(
         stage: defaults.stage,
         due: None,
         reminder: None,
+        acknowledged_due: None,
+        acknowledged_reminder: None,
         parent: None,
         links: None,
         bookmark: None,
@@ -234,6 +257,11 @@ pub fn serialize(document: &SonataDocument) -> Result<String> {
     for (key, value) in [
         ("due", document.due.clone()),
         ("reminder", document.reminder.clone()),
+        ("acknowledged_due", document.acknowledged_due.clone()),
+        (
+            "acknowledged_reminder",
+            document.acknowledged_reminder.clone(),
+        ),
         ("parent", document.parent.clone()),
     ] {
         if let Some(v) = value {
@@ -396,5 +424,19 @@ mod tests {
             parse("tasks/hello.md", raw).unwrap().document_type,
             DocumentType::Task
         );
+    }
+
+    #[test]
+    fn acknowledgement_values_round_trip_as_known_metadata() {
+        let raw = "---\nid: 01ABC\ntype: task\ntitle: Hello\ndue: 2026-09-08\nacknowledged_due: 2026-09-08\nreminder: 2026-09-08T09:30\nacknowledged_reminder: 2026-09-08T09:30\n---\n\nbody";
+        let doc = parse("tasks/hello.md", raw).unwrap();
+        assert_eq!(doc.acknowledged_due.as_deref(), Some("2026-09-08"));
+        assert_eq!(
+            doc.acknowledged_reminder.as_deref(),
+            Some("2026-09-08T09:30")
+        );
+        let written = serialize(&doc).unwrap();
+        assert!(written.contains("acknowledged_due: 2026-09-08"));
+        assert!(written.contains("acknowledged_reminder: 2026-09-08T09:30"));
     }
 }

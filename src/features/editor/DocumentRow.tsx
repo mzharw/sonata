@@ -22,6 +22,7 @@ import { renderMarkdownPreview } from "../../lib/renderMarkdown";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
 import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconMaximize, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown, IconLink, IconExternalLink } from "../../components/icons";
 import type { TaskStatus } from "../../types/domain";
+import type { DocumentAttention } from "../../lib/attention";
 
 const HOVER_PREVIEW_DELAY_MS = 450;
 
@@ -43,7 +44,7 @@ function dueMeta(due: string, status: DocumentSummary["status"]) {
   return { label, overdue };
 }
 
-export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUpdateStatus }: { doc: DocumentSummary; isActive: boolean; onToggleComplete: (doc: DocumentSummary) => void; onTogglePin: (doc: DocumentSummary) => void; onUpdateStatus: (doc: DocumentSummary, status: TaskStatus | undefined) => void }) {
+export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleComplete, onTogglePin, onUpdateStatus }: { doc: DocumentSummary; isActive: boolean; attention?: DocumentAttention; onAcknowledge: (doc: DocumentSummary, attention: DocumentAttention) => void; onToggleComplete: (doc: DocumentSummary) => void; onTogglePin: (doc: DocumentSummary) => void; onUpdateStatus: (doc: DocumentSummary, status: TaskStatus | undefined) => void }) {
   const ui = useUi();
   const qc = useQueryClient();
   const expanded = ui.expandedId === doc.id;
@@ -157,12 +158,13 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
   }, [expanded, doc.id]);
 
   return (
-    <li id={`doc-${doc.id}`} className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${doc.pinned ? " pinned" : ""}`}>
+    <li id={`doc-${doc.id}`} className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${doc.pinned ? " pinned" : ""}${attention ? " needs-attention" : ""}`}>
       {expanded && <span ref={headerSentinelRef} className="doc-header-sentinel" aria-hidden="true" />}
       <div
         className={`doc-row${headerIsStuck ? " is-sticky" : ""}`}
         onClick={() => {
           cancelPreview();
+          if (attention) onAcknowledge(doc, attention);
           ui.expand(expanded ? undefined : doc.id);
         }}
         onMouseEnter={() => {
@@ -179,6 +181,7 @@ export function DocumentRow({ doc, isActive, onToggleComplete, onTogglePin, onUp
         )}
         <div className="doc-main">
           <b className={doc.status === "completed" ? "is-completed" : undefined}>{doc.title || "Untitled"}</b>
+          {attention && <span className="attention-inline" role="status">{attention.labels.join(" · ")}</span>}
           {(() => {
             // Which chips a row shows is the type's business, so a note carrying legacy
             // `status:`/`due:` frontmatter stops advertising fields it no longer owns.

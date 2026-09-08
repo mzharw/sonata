@@ -217,6 +217,10 @@ pub struct SonataDocument {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reminder: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub acknowledged_due: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub acknowledged_reminder: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub links: Option<Vec<String>>,
@@ -254,9 +258,11 @@ impl SonataDocument {
         }
         if !kind.supports(Field::Due) {
             self.due = None;
+            self.acknowledged_due = None;
         }
         if !kind.supports(Field::Reminder) {
             self.reminder = None;
+            self.acknowledged_reminder = None;
         }
         if !kind.supports(Field::Parent) {
             self.parent = None;
@@ -367,6 +373,8 @@ mod spec_tests {
             stage: Some(IdeaStage::Developing),
             due: Some("2026-02-01".into()),
             reminder: Some("2026-01-30".into()),
+            acknowledged_due: None,
+            acknowledged_reminder: None,
             parent: Some("01PARENT".into()),
             links: Some(vec!["01OTHER".into()]),
             bookmark: Some(Bookmark {
@@ -440,6 +448,8 @@ mod spec_tests {
         assert_eq!(doc.priority, None);
         assert_eq!(doc.due, None);
         assert_eq!(doc.reminder, None);
+        assert_eq!(doc.acknowledged_due, None);
+        assert_eq!(doc.acknowledged_reminder, None);
         assert_eq!(doc.parent, None);
         assert!(doc.bookmark.is_none());
         // Kept: every type accepts tags and links, and notes carry a cover.
@@ -459,6 +469,8 @@ mod spec_tests {
         assert_eq!(doc.status, None);
         assert_eq!(doc.priority, None);
         assert_eq!(doc.due, None);
+        assert_eq!(doc.acknowledged_due, None);
+        assert_eq!(doc.acknowledged_reminder, None);
         assert_eq!(doc.stage, None);
         assert_eq!(doc.cover, None);
     }

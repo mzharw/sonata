@@ -17,12 +17,14 @@ describe("picking a day", () => {
   it("keeps a time that was already set", () => {
     const onChange = mount("2026-09-10T15:30");
     fireEvent.click(screen.getByRole("button", { name: "Tomorrow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T15:30$/));
   });
 
   it("stores the shorter date-only form when no time is set", () => {
     const onChange = mount("");
-    fireEvent.click(screen.getByRole("button", { name: "Today" }));
+    fireEvent.click(screen.getByRole("button", { name: "Tomorrow" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
   });
 
@@ -38,6 +40,7 @@ describe("picking a time", () => {
     const onChange = mount("2026-09-10");
     fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "15" }));
     fireEvent.click(within(screen.getByRole("listbox", { name: "Minute" })).getByRole("option", { name: "30" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-10T15:30");
   });
 
@@ -51,6 +54,7 @@ describe("picking a time", () => {
     const onChange = mount("2026-09-10T15:30");
     expect(screen.queryByText("No time set")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Clear time" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-10");
   });
 
@@ -63,12 +67,14 @@ describe("picking a time", () => {
   it("uses 00 minutes when an hour is chosen first", () => {
     const onChange = mount("2026-09-10");
     fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "08" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-10T08:00");
   });
 
   it("keeps the selected minute when changing the hour", () => {
     const onChange = mount("2026-09-10T08:15");
     fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "09" }));
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-10T09:15");
   });
 
@@ -85,6 +91,16 @@ describe("picking a time", () => {
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith("2026-09-10T08:00");
     expect(screen.queryByRole("dialog", { name: "Choose reminder" })).toBeNull();
+  });
+
+  it("warns and prevents committing a past reminder", () => {
+    const now = new Date();
+    const past = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours() - 1, now.getMinutes());
+    const value = `${past.getFullYear()}-${String(past.getMonth() + 1).padStart(2, "0")}-${String(past.getDate()).padStart(2, "0")}T${String(past.getHours()).padStart(2, "0")}:${String(past.getMinutes()).padStart(2, "0")}`;
+    const onChange = mount(value);
+    expect(screen.getByRole("alert").textContent).toMatch(/future reminder time/i);
+    expect((screen.getByRole("button", { name: "Done" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onChange).not.toHaveBeenCalled();
   });
 });
 

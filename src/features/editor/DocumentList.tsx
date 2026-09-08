@@ -1,4 +1,4 @@
-import type { KeyboardEvent } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
 import { useUi, activeFilterCount } from "../../stores/ui";
@@ -6,6 +6,8 @@ import { queryFor } from "../search/views";
 import { useListKeyboardNav } from "../../hooks/useListKeyboardNav";
 import { DocumentRow } from "./DocumentRow";
 import type { DocumentSummary, TaskStatus } from "../../types/domain";
+import { documentAttention, type DocumentAttention } from "../../lib/attention";
+import { IconBell } from "../../components/icons";
 
 async function toggleComplete(doc: DocumentSummary, qc: QueryClient) {
   const full = await native.readDocument(doc.id);
@@ -29,6 +31,7 @@ async function updateStatus(doc: DocumentSummary, status: TaskStatus | undefined
 export function DocumentList({ search }: { search: string }) {
   const ui = useUi();
   const qc = useQueryClient();
+  const [now, setNow] = useState(() => new Date());
   const { filters } = ui;
   const docs = useQuery({
     queryKey: ["documents", ui.view, ui.tag, search, filters],
@@ -45,6 +48,22 @@ export function DocumentList({ search }: { search: string }) {
   });
   const ids = docs.data?.map((d) => d.id) ?? [];
   const { activeId, clear: clearActive, containerProps } = useListKeyboardNav(ids);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(new Date()), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const attention = (docs.data ?? []).flatMap((doc) => {
+    const state = documentAttention(doc, now);
+    return state ? [{ doc, state }] : [];
+  });
+
+  const acknowledge = (doc: DocumentSummary, state: DocumentAttention) => {
+    void native.acknowledgeDocumentAttention(doc.id, state.due, state.reminder)
+      .then(() => qc.invalidateQueries({ queryKey: ["documents"] }))
+      .catch((error: unknown) => console.error("Couldn't acknowledge document attention", doc.id, error));
+  };
 
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
     if (event.key === "Escape") {
@@ -87,7 +106,20 @@ export function DocumentList({ search }: { search: string }) {
   }
 
   return (
-    <ul
+    <section className="document-list-shell" aria-label="Documents">
+      {attention.length > 0 && (
+        <div className="attention-strip" role="region" aria-label="Needs attention">
+          <span className="attention-strip-icon" aria-hidden="true"><IconBell size={15} /></span>
+          <div className="attention-strip-items">
+            {attention.map(({ doc, state }) => (
+              <button key={doc.id} type="button" onClick={() => { acknowledge(doc, state); ui.expand(doc.id); }}>
+                <b>{doc.title || "Untitled"}</b><span>{state.labels.join(" · ")}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      <ul
       className="document-list"
       {...containerProps}
       onKeyDown={onKeyDown}
@@ -98,7 +130,7 @@ export function DocumentList({ search }: { search: string }) {
       }}
     >
       {docs.data?.map((doc) => (
-        <DocumentRow key={doc.id} doc={doc} isActive={doc.id === activeId} onToggleComplete={(d) => void toggleComplete(d, qc)} onTogglePin={(d) => void togglePinned(d, qc)} onUpdateStatus={(d, status) => void updateStatus(d, status, qc)} />
+        <DocumentRow key={doc.id} doc={doc} isActive={doc.id === activeId} attention={documentAttention(doc, now)} onAcknowledge={acknowledge} onToggleComplete={(d) => void toggleComplete(d, qc)} onTogglePin={(d) => void togglePinned(d, qc)} onUpdateStatus={(d, status) => void updateStatus(d, status, qc)} />
       ))}
       {docs.data?.length === 0 &&
         (activeFilterCount(filters) > 0 ? (
@@ -111,6 +143,7 @@ export function DocumentList({ search }: { search: string }) {
         ) : (
           <div className="empty">Nothing here yet. Capture a thought, or make a new item.</div>
         ))}
-    </ul>
+      </ul>
+    </section>
   );
 }
