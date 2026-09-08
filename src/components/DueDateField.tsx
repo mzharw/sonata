@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { IconCalendar, IconChevronLeft, IconChevronRight, IconX } from "./icons";
 import type { ComponentType } from "react";
@@ -86,6 +86,9 @@ export function DueDateField({
    */
   withTime?: boolean;
 }) {
+  // Two pickers can be mounted at once (an expanded row plus the Quick Add form), so
+  // the label association cannot be built from the field name.
+  const timeInputId = useId();
   const [open, setOpen] = useState(false);
   const [placement, setPlacement] = useState<Placement | null>(null);
   const { date: datePart, time: timePart } = splitDateTime(value);
@@ -163,9 +166,9 @@ export function DueDateField({
             </div>
             {withTime && (
               <div className="date-picker-time">
-                <label htmlFor={`${label}-time`}>Time</label>
+                <label htmlFor={timeInputId}>Time</label>
                 <input
-                  id={`${label}-time`}
+                  id={timeInputId}
                   type="time"
                   aria-label={`Time for ${label}`}
                   value={timePart}
