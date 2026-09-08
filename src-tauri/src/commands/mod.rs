@@ -3,9 +3,10 @@ use crate::{
     domain::{DocumentInput, DocumentSummary, DocumentType, SearchQuery, SonataDocument},
     errors::{Result, SonataError},
     indexer, markdown, relations,
-    workspace::Workspace,
+    workspace::{LockConfig, Workspace},
 };
 use serde::Serialize;
+use sha2::{Digest, Sha256};
 #[cfg(windows)]
 use std::process::Command;
 use std::{
@@ -14,11 +15,26 @@ use std::{
     sync::Mutex,
 };
 use tauri::{AppHandle, Emitter, State};
+use ulid::Ulid;
 pub struct Session {
     pub workspace: Workspace,
     pub index: Index,
 }
 pub struct AppState(pub Mutex<Option<Session>>);
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceLockStatus {
+    enabled: bool,
+    timeout_minutes: u32,
+}
+
+fn lock_verifier(salt: &str, password: &str) -> String {
+    format!(
+        "{:x}",
+        Sha256::digest(format!("{salt}:{password}").as_bytes())
+    )
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -149,6 +165,47 @@ pub fn open_workspace(path: String, state: State<AppState>) -> Result<()> {
         .map_err(|_| SonataError::WorkspaceUnavailable("state lock failed".into()))? =
         Some(Session { workspace, index });
     Ok(())
+}
+#[tauri::command]
+pub fn workspace_lock_status(state: State<AppState>) -> Result<WorkspaceLockStatus> {
+    let guard = session(&state)?;
+    let lock = guard.as_ref().unwrap().workspace.config.lock.as_ref();
+    Ok(WorkspaceLockStatus {
+        enabled: lock.is_some(),
+        timeout_minutes: lock.map(|config| config.timeout_minutes).unwrap_or(15),
+    })
+}
+#[tauri::command]
+pub fn configure_workspace_lock(
+    password: String,
+    timeout_minutes: u32,
+    state: State<AppState>,
+) -> Result<()> {
+    let mut guard = session(&state)?;
+    let workspace = &mut guard.as_mut().unwrap().workspace;
+    workspace.config.lock = if password.is_empty() {
+        None
+    } else {
+        let salt = Ulid::new().to_string();
+        Some(LockConfig {
+            verifier: lock_verifier(&salt, &password),
+            salt,
+            timeout_minutes: timeout_minutes.clamp(1, 240),
+        })
+    };
+    workspace.save_config()
+}
+#[tauri::command]
+pub fn verify_workspace_lock(password: String, state: State<AppState>) -> Result<bool> {
+    let guard = session(&state)?;
+    Ok(guard
+        .as_ref()
+        .unwrap()
+        .workspace
+        .config
+        .lock
+        .as_ref()
+        .is_none_or(|config| lock_verifier(&config.salt, &password) == config.verifier))
 }
 #[tauri::command]
 pub fn list_documents(query: SearchQuery, state: State<AppState>) -> Result<Vec<DocumentSummary>> {

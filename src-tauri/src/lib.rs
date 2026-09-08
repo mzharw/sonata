@@ -71,6 +71,9 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::create_workspace,
             commands::open_workspace,
+            commands::workspace_lock_status,
+            commands::configure_workspace_lock,
+            commands::verify_workspace_lock,
             commands::show_sidebar,
             commands::hide_sidebar,
             commands::resize_sidebar,

@@ -11,6 +11,14 @@ use std::{
 pub struct WorkspaceConfig {
     pub version: u8,
     pub folders: Folders,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lock: Option<LockConfig>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LockConfig {
+    pub salt: String,
+    pub verifier: String,
+    pub timeout_minutes: u32,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Folders {
@@ -33,6 +41,7 @@ impl Default for WorkspaceConfig {
                 bookmarks: "bookmarks".into(),
                 archive: "archive".into(),
             },
+            lock: None,
         }
     }
 }
@@ -87,6 +96,14 @@ impl Workspace {
     pub fn db_path(&self) -> PathBuf {
         self.root.join(".sonata/index.db")
     }
+    pub fn save_config(&self) -> Result<()> {
+        fs::write(
+            self.root.join(".sonata/config.json"),
+            serde_json::to_vec_pretty(&self.config)
+                .map_err(|e| SonataError::InvalidMetadata(e.to_string()))?,
+        )?;
+        Ok(())
+    }
     pub fn relative(&self, path: &Path) -> Result<String> {
         let canonical_root = self.root.canonicalize()?;
         let canonical_path = path.canonicalize()?;
@@ -105,5 +122,26 @@ impl Workspace {
             index += 1;
         }
         candidate
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn lock_configuration_round_trips_without_changing_folder_defaults() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut workspace = Workspace::create(directory.path().to_path_buf()).unwrap();
+        workspace.config.lock = Some(LockConfig {
+            salt: "salt".into(),
+            verifier: "verifier".into(),
+            timeout_minutes: 20,
+        });
+        workspace.save_config().unwrap();
+
+        let reopened = Workspace::open(directory.path().to_path_buf()).unwrap();
+        assert_eq!(reopened.config.folders.notes, "notes");
+        assert_eq!(reopened.config.lock.unwrap().timeout_minutes, 20);
     }
 }

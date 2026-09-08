@@ -66,5 +66,8 @@ export const native = {
     const path = await openWithSidebarFrozen({ directory: true, multiple: false, title: "Choose Sonata workspace" });
     if (path !== null) await invoke<void>("open_workspace", { path });
     return path;
-  }
+  },
+  workspaceLockStatus: () => invoke<{ enabled: boolean; timeoutMinutes: number }>("workspace_lock_status"),
+  configureWorkspaceLock: (password: string, timeoutMinutes: number) => invoke<void>("configure_workspace_lock", { password, timeoutMinutes }),
+  verifyWorkspaceLock: (password: string) => invoke<boolean>("verify_workspace_lock", { password }),
 };
