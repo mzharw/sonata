@@ -62,11 +62,12 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   };
   const bodyEditorRef = useRef<MarkdownEditorHandle>(null);
   const headerSentinelRef = useRef<HTMLSpanElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const [rawActive, setRawActive] = useState(false);
   const [headerIsStuck, setHeaderIsStuck] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [showPreview, setShowPreview] = useState(false);
-  const [contextOpen, setContextOpen] = useState(false);
+  const contextOpen = ui.contextMenu?.kind === "document" && ui.contextMenu.documentId === doc.id;
   const preview = useQuery({ queryKey: ["preview", doc.id], queryFn: () => native.readDocument(doc.id), enabled: showPreview, staleTime: 60_000 });
   const previewVisible = Boolean(showPreview && preview.data?.body.trim());
   const previewTruncated = (preview.data?.body.length ?? 0) > 500;
@@ -83,6 +84,15 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   };
 
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
+
+  useEffect(() => {
+    if (!contextOpen) return;
+    const closeWhenOutside = (event: PointerEvent) => {
+      if (!contextMenuRef.current?.contains(event.target as Node)) ui.closeContextMenu();
+    };
+    document.addEventListener("pointerdown", closeWhenOutside);
+    return () => document.removeEventListener("pointerdown", closeWhenOutside);
+  }, [contextOpen, ui]);
 
   // The list itself is the scrollport, immediately below the tags bar (or the
   // top bar when no tags are shown). Keep the row in its ordinary layout until
@@ -184,8 +194,9 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
         onMouseLeave={cancelPreview}
         onContextMenu={(event) => {
           event.preventDefault();
+          event.stopPropagation();
           cancelPreview();
-          setContextOpen(true);
+          ui.openContextMenu({ kind: "document", documentId: doc.id });
         }}
       >
         {spec.affordance === "checkbox" ? (
@@ -333,16 +344,16 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
         </div>
       </div>
       {contextOpen && (
-        <div className="document-context-menu" role="menu" onMouseLeave={() => setContextOpen(false)}>
-          <button role="menuitem" type="button" onClick={() => { ui.expand(doc.id); setContextOpen(false); }}>Open</button>
-          <button role="menuitem" type="button" onClick={() => { onTogglePin(doc); setContextOpen(false); }}>{doc.pinned ? "Unpin" : "Pin"}</button>
-          {doc.type === "task" && <button role="menuitem" type="button" onClick={() => { onToggleComplete(doc); setContextOpen(false); }}>{doc.status === "completed" ? "Mark as todo" : "Mark as completed"}</button>}
-          {(doc.type === "task" || doc.type === "note") && <button role="menuitem" type="button" onClick={() => void createRelated().catch((error) => { console.error("Couldn't create related document", error); ui.showToast({ message: "Couldn't create related document" }); }).finally(() => setContextOpen(false))}>New related document</button>}
-          {spec.convertsTo.map((type) => <button key={type} role="menuitem" type="button" onClick={() => { void convertTo(type); setContextOpen(false); }}>Convert to {TYPE_SPECS[type].label}</button>)}
-          <button role="menuitem" type="button" onClick={() => { navigator.clipboard.writeText(`[[${doc.title || "Untitled"}|${doc.id}]]`).then(() => ui.showToast({ message: "Copied document link" })).catch(() => ui.showToast({ message: "Couldn't copy document link" })); setContextOpen(false); }}>Copy link</button>
-          <button role="menuitem" type="button" onClick={() => { void native.readDocument(doc.id).then((source) => navigator.clipboard.writeText(source.body)).then(() => ui.showToast({ message: "Copied note content" })).catch(() => ui.showToast({ message: "Couldn't copy note content" })); setContextOpen(false); }}>Copy content</button>
-          <button role="menuitem" type="button" onClick={() => { void (doc.archived ? native.unarchive(doc.id) : native.archive(doc.id)).then(() => qc.invalidateQueries({ queryKey: ["documents"] })); setContextOpen(false); }}>{doc.archived ? "Restore" : "Archive"}</button>
-          <button role="menuitem" type="button" onClick={() => { ui.requestConfirm({ message: `Move "${doc.title || "Untitled"}" to trash?`, confirmLabel: "Move to trash", onConfirm: () => void native.trash(doc.id).then(() => qc.invalidateQueries({ queryKey: ["documents"] })) }); setContextOpen(false); }}>Trash</button>
+        <div ref={contextMenuRef} className="document-context-menu" role="menu" onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
+          <button role="menuitem" type="button" onClick={() => { ui.expand(doc.id); ui.closeContextMenu(); }}>Open</button>
+          <button role="menuitem" type="button" onClick={() => { onTogglePin(doc); ui.closeContextMenu(); }}>{doc.pinned ? "Unpin" : "Pin"}</button>
+          {doc.type === "task" && <button role="menuitem" type="button" onClick={() => { onToggleComplete(doc); ui.closeContextMenu(); }}>{doc.status === "completed" ? "Mark as todo" : "Mark as completed"}</button>}
+          {(doc.type === "task" || doc.type === "note") && <button role="menuitem" type="button" onClick={() => void createRelated().catch((error) => { console.error("Couldn't create related document", error); ui.showToast({ message: "Couldn't create related document" }); }).finally(() => ui.closeContextMenu())}>New related document</button>}
+          {spec.convertsTo.map((type) => <button key={type} role="menuitem" type="button" onClick={() => { void convertTo(type); ui.closeContextMenu(); }}>Convert to {TYPE_SPECS[type].label}</button>)}
+          <button role="menuitem" type="button" onClick={() => { navigator.clipboard.writeText(`[[${doc.title || "Untitled"}|${doc.id}]]`).then(() => ui.showToast({ message: "Copied document link" })).catch(() => ui.showToast({ message: "Couldn't copy document link" })); ui.closeContextMenu(); }}>Copy link</button>
+          <button role="menuitem" type="button" onClick={() => { void native.readDocument(doc.id).then((source) => navigator.clipboard.writeText(source.body)).then(() => ui.showToast({ message: "Copied note content" })).catch(() => ui.showToast({ message: "Couldn't copy note content" })); ui.closeContextMenu(); }}>Copy content</button>
+          <button role="menuitem" type="button" onClick={() => { void (doc.archived ? native.unarchive(doc.id) : native.archive(doc.id)).then(() => qc.invalidateQueries({ queryKey: ["documents"] })); ui.closeContextMenu(); }}>{doc.archived ? "Restore" : "Archive"}</button>
+          <button role="menuitem" type="button" onClick={() => { ui.requestConfirm({ message: `Move "${doc.title || "Untitled"}" to trash?`, confirmLabel: "Move to trash", onConfirm: () => void native.trash(doc.id).then(() => qc.invalidateQueries({ queryKey: ["documents"] })) }); ui.closeContextMenu(); }}>Trash</button>
         </div>
       )}
       {!expanded && (

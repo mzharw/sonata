@@ -3,6 +3,9 @@ import type { Priority, SortOrder, TaskStatus } from "../types/domain";
 export type View = "inbox" | "all" | "today" | "upcoming" | "tasks" | "notes" | "ideas" | "bookmarks" | "completed" | "archive" | "tag";
 
 export interface ConfirmRequest { message: string; confirmLabel: string; onConfirm: () => void }
+export type ContextMenu =
+  | { kind: "document"; documentId: string }
+  | { kind: "navigation"; x: number; y: number };
 /** Refinements layered on top of whichever view is selected. */
 export interface Filters { status?: TaskStatus; priority?: Priority; tags?: string[]; sort: SortOrder }
 export const NO_FILTERS: Filters = { sort: "default" };
@@ -19,6 +22,7 @@ interface Ui {
   filters: Filters;
   confirm?: ConfirmRequest;
   toast?: ToastRequest;
+  contextMenu?: ContextMenu;
   setView: (view: View, tag?: string) => void;
   expand: (id?: string) => void;
   openFullScreen: (id?: string) => void;
@@ -29,6 +33,8 @@ interface Ui {
   clearConfirm: () => void;
   showToast: (toast: ToastRequest) => void;
   clearToast: () => void;
+  openContextMenu: (menu: ContextMenu) => void;
+  closeContextMenu: () => void;
 }
 export const useUi = create<Ui>((set) => ({
   view: "all",
@@ -46,4 +52,6 @@ export const useUi = create<Ui>((set) => ({
   clearConfirm: () => set({ confirm: undefined }),
   showToast: (toast) => set({ toast }),
   clearToast: () => set({ toast: undefined }),
+  openContextMenu: (contextMenu) => set({ contextMenu }),
+  closeContextMenu: () => set({ contextMenu: undefined }),
 }));

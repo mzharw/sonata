@@ -13,7 +13,7 @@ vi.mock("../../lib/native", () => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
-  useUi.setState({ expandedId: undefined });
+  useUi.setState({ expandedId: undefined, contextMenu: undefined });
   vi.mocked(native.tags).mockResolvedValue([]);
   vi.mocked(native.backlinks).mockResolvedValue([]);
 });
@@ -72,6 +72,31 @@ describe("the row context menu", () => {
     expect(screen.getByRole("menuitem", { name: "New related document" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Copy link" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
+  });
+
+  it("closes when the user clicks outside it", () => {
+    mount({ type: "task" });
+    fireEvent.contextMenu(screen.getByText("Sort me out"));
+    expect(screen.getByRole("menu")).toBeTruthy();
+
+    fireEvent.pointerDown(document.body);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("replaces another row's menu instead of stacking menus", () => {
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ul>
+          <DocumentRow doc={summary({ id: "first", title: "First" })} isActive={false} onAcknowledge={() => {}} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} />
+          <DocumentRow doc={summary({ id: "second", title: "Second" })} isActive={false} onAcknowledge={() => {}} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} />
+        </ul>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByText("First"));
+    fireEvent.contextMenu(screen.getByText("Second"));
+
+    expect(screen.getAllByRole("menu")).toHaveLength(1);
   });
 });
 
