@@ -66,12 +66,14 @@ function BlockPreview({
   onActivate,
   onToggleTask,
   onOpenAttachment,
+  onOpenExternal,
 }: {
   html: string;
   ariaLabel: string;
   onActivate: () => void;
   onToggleTask?: (index: number) => void;
   onOpenAttachment?: (path: string) => void;
+  onOpenExternal?: (url: string) => void;
 }) {
   const proseRef = useRef<HTMLDivElement>(null);
   return (
@@ -87,6 +89,13 @@ function BlockPreview({
           e.preventDefault();
           e.stopPropagation();
           onOpenAttachment(attachmentPath);
+          return;
+        }
+        const href = target.closest("a")?.getAttribute("href");
+        if (href && /^(https?:|mailto:)/i.test(href) && onOpenExternal) {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenExternal(href);
           return;
         }
         if (onToggleTask && target instanceof HTMLInputElement && target.type === "checkbox") {
@@ -236,7 +245,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
   onAttach?: () => void;
   onPasteImage?: (image: File) => Promise<Attachment>;
   onOpenAttachment?: (path: string) => void;
-}>(function MarkdownEditor({ value, onChange, onBlur, placeholder, ariaLabel, onRawChange, attachmentUrls, onAttach, onPasteImage, onOpenAttachment }, ref) {
+  onOpenExternal?: (url: string) => void;
+}>(function MarkdownEditor({ value, onChange, onBlur, placeholder, ariaLabel, onRawChange, attachmentUrls, onAttach, onPasteImage, onOpenAttachment, onOpenExternal }, ref) {
   const [segment, setSegment] = useState<Segment>(null);
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -525,9 +535,16 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
 
   const openAttachmentFromFrozenPreview = (event: ReactMouseEvent<HTMLDivElement>) => {
     const attachmentPath = attachmentPathFromTarget(event.target);
-    if (!attachmentPath || !onOpenAttachment) return;
-    event.preventDefault();
-    onOpenAttachment(attachmentPath);
+    if (attachmentPath && onOpenAttachment) {
+      event.preventDefault();
+      onOpenAttachment(attachmentPath);
+      return;
+    }
+    const href = (event.target as Element).closest("a")?.getAttribute("href");
+    if (href && /^(https?:|mailto:)/i.test(href) && onOpenExternal) {
+      event.preventDefault();
+      onOpenExternal(href);
+    }
   };
 
   if (segment) {
@@ -628,6 +645,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
         onActivate={() => activateAll()}
         onToggleTask={(idx) => onChange(toggleNthTaskItem(value, idx))}
         onOpenAttachment={onOpenAttachment}
+        onOpenExternal={onOpenExternal}
       />,
     );
   }
@@ -645,6 +663,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
             onActivate={() => activateBlock(i)}
             onToggleTask={(idx) => toggleTaskInBlock(i, idx)}
             onOpenAttachment={onOpenAttachment}
+            onOpenExternal={onOpenExternal}
           />
         ),
       )}

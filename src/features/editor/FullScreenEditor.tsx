@@ -116,6 +116,7 @@ export function FullScreenEditor({ id }: { id: string }) {
               onAttach={() => void attachFromBody()}
               onPasteImage={pasteImage}
               onOpenAttachment={revealAttachment}
+              onOpenExternal={(url) => void native.openExternal(url)}
             />
             {spec?.longForm && <BacklinksPanel id={id} />}
           </div>

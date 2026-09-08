@@ -65,6 +65,14 @@ describe("MarkdownEditor", () => {
     expect(onOpenAttachment).toHaveBeenCalledWith("attachments/01ABC/report.pdf");
   });
 
+  it("opens an external link through the supplied native callback without activating the editor", () => {
+    const onOpenExternal = vi.fn();
+    render(<MarkdownEditor value="[Sonata](https://example.com)" onChange={vi.fn()} onOpenExternal={onOpenExternal} ariaLabel="Note body" />);
+    fireEvent.click(screen.getByRole("link", { name: "Sonata" }));
+    expect(onOpenExternal).toHaveBeenCalledWith("https://example.com");
+    expect(screen.queryByLabelText("Note body")).toBeNull();
+  });
+
   it("strips dangerous attributes instead of executing them", () => {
     setup('<img src=x onerror="window.__pwned=true">hello');
     const img = document.querySelector(".md-prose img");

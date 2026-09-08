@@ -362,6 +362,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
             onAttach={() => void attachFromBody()}
             onPasteImage={pasteImage}
             onOpenAttachment={revealAttachment}
+            onOpenExternal={(url) => void native.openExternal(url)}
           />
           <div className="editor-footer">
             <span className="editor-timestamps">
