@@ -398,11 +398,23 @@ mod list_filter_tests {
     #[test]
     fn filters_by_every_selected_tag() {
         let index = index();
-        seed_with(&index, DocumentType::Note, "both", |doc| doc.tags = vec!["work".into(), "urgent".into()]);
-        seed_with(&index, DocumentType::Note, "work only", |doc| doc.tags = vec!["work".into()]);
-        seed_with(&index, DocumentType::Note, "urgent only", |doc| doc.tags = vec!["urgent".into()]);
+        seed_with(&index, DocumentType::Note, "both", |doc| {
+            doc.tags = vec!["work".into(), "urgent".into()]
+        });
+        seed_with(&index, DocumentType::Note, "work only", |doc| {
+            doc.tags = vec!["work".into()]
+        });
+        seed_with(&index, DocumentType::Note, "urgent only", |doc| {
+            doc.tags = vec!["urgent".into()]
+        });
 
-        let found = titles(&index, &SearchQuery { tags: Some(vec!["WORK".into(), "urgent".into()]), ..Default::default() });
+        let found = titles(
+            &index,
+            &SearchQuery {
+                tags: Some(vec!["WORK".into(), "urgent".into()]),
+                ..Default::default()
+            },
+        );
         assert_eq!(found, vec!["both"]);
     }
 

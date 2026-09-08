@@ -78,7 +78,8 @@ pub fn wiki_targets(body: &str) -> Vec<String> {
         .expect("valid regex")
         .captures_iter(body)
         .filter_map(|c| {
-            let target = c.get(2)
+            let target = c
+                .get(2)
                 .filter(|id| id.as_str().trim().len() == 26)
                 .or_else(|| c.get(1))?;
             Some(target.as_str().trim().to_string())
