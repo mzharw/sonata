@@ -73,6 +73,13 @@ describe("MarkdownEditor", () => {
     expect(screen.queryByLabelText("Note body")).toBeNull();
   });
 
+  it("opens a stable wiki link inside Sonata", () => {
+    const onOpenDocument = vi.fn();
+    render(<MarkdownEditor value="[[Related|01ARZ3NDEKTSV4RRFFQ69G5FAV]]" onChange={vi.fn()} onOpenDocument={onOpenDocument} ariaLabel="Note body" />);
+    fireEvent.click(screen.getByRole("link", { name: "Related" }));
+    expect(onOpenDocument).toHaveBeenCalledWith("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+  });
+
   it("strips dangerous attributes instead of executing them", () => {
     setup('<img src=x onerror="window.__pwned=true">hello');
     const img = document.querySelector(".md-prose img");

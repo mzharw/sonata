@@ -74,10 +74,15 @@ pub fn slug(title: &str) -> String {
     }
 }
 pub fn wiki_targets(body: &str) -> Vec<String> {
-    Regex::new(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
+    Regex::new(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
         .expect("valid regex")
         .captures_iter(body)
-        .filter_map(|c| c.get(1).map(|m| m.as_str().trim().to_string()))
+        .filter_map(|c| {
+            let target = c.get(2)
+                .filter(|id| id.as_str().trim().len() == 26)
+                .or_else(|| c.get(1))?;
+            Some(target.as_str().trim().to_string())
+        })
         .collect()
 }
 
@@ -336,6 +341,10 @@ mod tests {
         assert_eq!(
             wiki_targets("See [[Hello]] and [[path/x|X]]"),
             vec!["Hello", "path/x"]
+        );
+        assert_eq!(
+            wiki_targets("See [[Renamed title|01ARZ3NDEKTSV4RRFFQ69G5FAV]]"),
+            vec!["01ARZ3NDEKTSV4RRFFQ69G5FAV"]
         );
     }
     #[test]

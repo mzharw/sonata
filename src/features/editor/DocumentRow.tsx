@@ -13,6 +13,7 @@ import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
 import { TYPE_SPECS, type RowChip } from "../../lib/documentTypes";
 import { TypeSelect } from "../../components/TypeSelect";
 import { BacklinksPanel } from "../../components/BacklinksPanel";
+import { RelatedDocuments } from "../../components/RelatedDocuments";
 import { useTypeConversion } from "../../hooks/useTypeConversion";
 import { STATUS_OPTIONS } from "../../lib/statusOptions";
 import { stageLabel } from "../../lib/stageOptions";
@@ -349,6 +350,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
             <IconPencil className="editor-title-pen" size={15} aria-hidden="true" />
           </div>
           <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
+          <RelatedDocuments doc={full} onChange={setFull} />
           <MarkdownEditor
             ref={bodyEditorRef}
             ariaLabel="Note body"
@@ -362,6 +364,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
             onPasteImage={pasteImage}
             onOpenAttachment={revealAttachment}
             onOpenExternal={(url) => void native.openExternal(url)}
+            onOpenDocument={(id) => ui.expand(id)}
           />
           <div className="editor-footer">
             <span className="editor-timestamps">

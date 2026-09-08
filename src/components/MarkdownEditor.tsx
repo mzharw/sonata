@@ -18,12 +18,13 @@ import {
 import { getCaretCoordinates } from "../lib/caretPosition";
 import { ShorthandMenu, type MenuAnchor } from "./ShorthandMenu";
 import type { Attachment } from "../types/domain";
+import { renderWikiLinks } from "../lib/renderMarkdown";
 
 const MD_OPTS = { gfm: true, breaks: true } as const;
 
 function renderTokensHtml(tokens: Token[], attachmentUrls: Record<string, string> = {}): string {
   if (tokens.length === 0) return "";
-  const html = marked.parser(tokens, MD_OPTS) as string;
+  const html = marked.parse(renderWikiLinks(tokens.map((token) => token.raw).join("")), MD_OPTS) as string;
   // marked always renders GFM task-list checkboxes as `disabled` — strip that so they're
   // actually clickable straight from the preview, without needing to enter edit mode first.
   const interactive = html.replace(/<input\b([^>]*?)\sdisabled(?:="")?([^>]*)>/g, "<input$1$2>");
@@ -67,6 +68,7 @@ function BlockPreview({
   onToggleTask,
   onOpenAttachment,
   onOpenExternal,
+  onOpenDocument,
 }: {
   html: string;
   ariaLabel: string;
@@ -74,6 +76,7 @@ function BlockPreview({
   onToggleTask?: (index: number) => void;
   onOpenAttachment?: (path: string) => void;
   onOpenExternal?: (url: string) => void;
+  onOpenDocument?: (id: string) => void;
 }) {
   const proseRef = useRef<HTMLDivElement>(null);
   return (
@@ -92,6 +95,13 @@ function BlockPreview({
           return;
         }
         const href = target.closest("a")?.getAttribute("href");
+        const documentId = href?.match(/^https:\/\/sonata\.invalid\/document\/([0-9A-HJKMNP-TV-Z]{26})$/i)?.[1];
+        if (documentId && onOpenDocument) {
+          e.preventDefault();
+          e.stopPropagation();
+          onOpenDocument(documentId);
+          return;
+        }
         if (href && /^(https?:|mailto:)/i.test(href) && onOpenExternal) {
           e.preventDefault();
           e.stopPropagation();
@@ -246,7 +256,8 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
   onPasteImage?: (image: File) => Promise<Attachment>;
   onOpenAttachment?: (path: string) => void;
   onOpenExternal?: (url: string) => void;
-}>(function MarkdownEditor({ value, onChange, onBlur, placeholder, ariaLabel, onRawChange, attachmentUrls, onAttach, onPasteImage, onOpenAttachment, onOpenExternal }, ref) {
+  onOpenDocument?: (id: string) => void;
+}>(function MarkdownEditor({ value, onChange, onBlur, placeholder, ariaLabel, onRawChange, attachmentUrls, onAttach, onPasteImage, onOpenAttachment, onOpenExternal, onOpenDocument }, ref) {
   const [segment, setSegment] = useState<Segment>(null);
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -541,6 +552,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
       return;
     }
     const href = (event.target as Element).closest("a")?.getAttribute("href");
+    const documentId = href?.match(/^https:\/\/sonata\.invalid\/document\/([0-9A-HJKMNP-TV-Z]{26})$/i)?.[1];
+    if (documentId && onOpenDocument) {
+      event.preventDefault();
+      onOpenDocument(documentId);
+      return;
+    }
     if (href && /^(https?:|mailto:)/i.test(href) && onOpenExternal) {
       event.preventDefault();
       onOpenExternal(href);
@@ -646,6 +663,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
         onToggleTask={(idx) => onChange(toggleNthTaskItem(value, idx))}
         onOpenAttachment={onOpenAttachment}
         onOpenExternal={onOpenExternal}
+        onOpenDocument={onOpenDocument}
       />,
     );
   }
@@ -664,6 +682,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
             onToggleTask={(idx) => toggleTaskInBlock(i, idx)}
             onOpenAttachment={onOpenAttachment}
             onOpenExternal={onOpenExternal}
+            onOpenDocument={onOpenDocument}
           />
         ),
       )}

@@ -8,6 +8,7 @@ import { attachToDocument, chooseAndImportAttachment, importClipboardImage } fro
 import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
 import { useTypeConversion } from "../../hooks/useTypeConversion";
 import { BacklinksPanel } from "../../components/BacklinksPanel";
+import { RelatedDocuments } from "../../components/RelatedDocuments";
 import { TYPE_SPECS } from "../../lib/documentTypes";
 import { wordCount } from "../../lib/wordCount";
 import { native } from "../../lib/native";
@@ -104,6 +105,7 @@ export function FullScreenEditor({ id }: { id: string }) {
               </div>
             )}
             <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
+            <RelatedDocuments doc={full} onChange={setFull} />
             <MarkdownEditor
               ref={bodyEditorRef}
               ariaLabel="Note body"
@@ -117,6 +119,7 @@ export function FullScreenEditor({ id }: { id: string }) {
               onPasteImage={pasteImage}
               onOpenAttachment={revealAttachment}
               onOpenExternal={(url) => void native.openExternal(url)}
+              onOpenDocument={(target) => { ui.openFullScreen(undefined); ui.expand(target); }}
             />
             {spec?.longForm && <BacklinksPanel id={id} />}
           </div>
