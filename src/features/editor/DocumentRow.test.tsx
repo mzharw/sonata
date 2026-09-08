@@ -50,6 +50,11 @@ describe("the row's leading affordance", () => {
     expect(screen.getByRole("button", { name: "Mark as completed" })).toBeTruthy();
   });
 
+  it("offers restore rather than archive for archived documents", () => {
+    mount({ archived: true });
+    expect(screen.getByRole("button", { name: "Restore from archive" })).toBeTruthy();
+  });
+
   it("gives every other type a static type glyph, titled with its label", () => {
     for (const type of ["inbox", "note", "idea", "bookmark"] as DocumentType[]) {
       mount({ type });

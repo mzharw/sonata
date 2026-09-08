@@ -272,12 +272,11 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           )}
           <button
             className="icon-btn"
-            aria-label="Archive"
-            title="Archive — moves it out of this list, into the Archive view"
+            aria-label={doc.archived ? "Restore from archive" : "Archive"}
+            title={doc.archived ? "Restore to its document type" : "Archive — moves it out of this list, into the Archive view"}
             onClick={(e) => {
               e.stopPropagation();
-              void native
-                .archive(doc.id)
+              void (doc.archived ? native.unarchive(doc.id) : native.archive(doc.id))
                 .then(() => {
                   qc.invalidateQueries({ queryKey: ["documents"] });
                   ui.showToast({
