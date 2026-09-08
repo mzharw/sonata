@@ -10,12 +10,15 @@ import { CommandPalette } from "../features/palette/CommandPalette";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { Toast } from "../components/Toast";
 import { IconSearch } from "../components/icons";
+import { IconSettings } from "../components/icons";
+import { SettingsPanel } from "../components/SettingsPanel";
 import { Logo } from "../components/Logo";
 import { PALETTE_HOTKEY } from "../lib/hotkeys";
 
 export default function App() {
   const ui = useUi();
   const [search, setSearch] = useState("");
+  const [settings, setSettings] = useState(false);
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
@@ -44,6 +47,7 @@ export default function App() {
         </div>
         <ViewMenu />
         <FilterMenu />
+        <button className="icon-btn" aria-label="Settings" title="Settings" onClick={() => setSettings(true)}><IconSettings size={15} /></button>
       </header>
       <TagChipsBar />
       <DocumentList search={search} />
@@ -51,6 +55,7 @@ export default function App() {
       {ui.palette && <CommandPalette close={() => ui.setPalette(false)} />}
       {ui.confirm && <ConfirmDialog request={ui.confirm} onCancel={ui.clearConfirm} />}
       {ui.toast && <Toast toast={ui.toast} onDismiss={ui.clearToast} />}
+      {settings && <SettingsPanel close={() => setSettings(false)} />}
     </main>
   );
 }

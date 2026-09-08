@@ -28,6 +28,7 @@ export const IconInbox = (props: IconProps) => <svg {...base(props)}><path d="M4
 export const IconPin = (props: IconProps) => <svg {...base(props)}><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6Z" /><path d="M12 15v5" /></svg>;
 export const IconFlag = (props: IconProps) => <svg {...base(props)}><path d="M5 3v18" /><path d="M5 4h11l-2.5 4L16 12H5Z" /></svg>;
 export const IconFilter = (props: IconProps) => <svg {...base(props)}><path d="M4 7h16M7 12h10M10 17h4" /></svg>;
+export const IconSettings = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.2 2.2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.2-2.2.1-.1A1.7 1.7 0 0 0 6.6 15a1.7 1.7 0 0 0-1.6-1H4.8v-3.2H5a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.2-2.2.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h3.2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.2 2.2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2V14H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>;
 export const IconCircleDot = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" /></svg>;
 export const IconChevronLeft = (props: IconProps) => <svg {...base(props)}><path d="m15 6-6 6 6 6" /></svg>;
 export const IconChevronRight = (props: IconProps) => <svg {...base(props)}><path d="m9 6 6 6-6 6" /></svg>;
