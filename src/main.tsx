@@ -23,12 +23,9 @@ const BlockWebViewShortcuts = () => {
         event.stopPropagation();
       }
     };
-    const blockContextMenu = (event: MouseEvent) => event.preventDefault();
     window.addEventListener("keydown", blockBrowserShortcut, true);
-    window.addEventListener("contextmenu", blockContextMenu);
     return () => {
       window.removeEventListener("keydown", blockBrowserShortcut, true);
-      window.removeEventListener("contextmenu", blockContextMenu);
     };
   }, []);
   return null;

@@ -8,7 +8,7 @@ import { useUi } from "../../stores/ui";
 import type { DocumentSummary, DocumentType } from "../../types/domain";
 
 vi.mock("../../lib/native", () => ({
-  native: { tags: vi.fn(), readDocument: vi.fn(), backlinks: vi.fn(), openExternal: vi.fn(), archive: vi.fn(), trash: vi.fn() },
+  native: { tags: vi.fn(), readDocument: vi.fn(), backlinks: vi.fn(), openExternal: vi.fn(), archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), createDocument: vi.fn(), updateDocument: vi.fn() },
 }));
 
 beforeEach(() => {
@@ -61,6 +61,17 @@ describe("the row's leading affordance", () => {
       expect(screen.queryByRole("button", { name: /Mark as/ })).toBeNull();
       cleanup();
     }
+  });
+});
+
+describe("the row context menu", () => {
+  it("offers the complete document action set", () => {
+    mount({ type: "task" });
+    fireEvent.contextMenu(screen.getByText("Sort me out"));
+    expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "New related document" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Copy link" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
   });
 });
 

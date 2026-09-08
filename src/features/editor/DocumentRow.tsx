@@ -66,6 +66,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   const [headerIsStuck, setHeaderIsStuck] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [showPreview, setShowPreview] = useState(false);
+  const [contextOpen, setContextOpen] = useState(false);
   const preview = useQuery({ queryKey: ["preview", doc.id], queryFn: () => native.readDocument(doc.id), enabled: showPreview, staleTime: 60_000 });
   const previewVisible = Boolean(showPreview && preview.data?.body.trim());
   const previewTruncated = (preview.data?.body.length ?? 0) > 500;
@@ -154,6 +155,15 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
     }
   };
 
+  const createRelated = async () => {
+    const source = await native.readDocument(doc.id);
+    const isChildTask = source.type === "task";
+    const created = await native.createDocument({ type: isChildTask ? "task" : "note", title: "Untitled", parent: isChildTask ? source.id : undefined, links: [source.id] });
+    await native.updateDocument({ ...source, links: [...(source.links ?? []), created.id] }, source.contentHash);
+    qc.invalidateQueries({ queryKey: ["documents"] });
+    ui.expand(created.id);
+  };
+
   useEffect(() => {
     if (expanded) document.getElementById(`doc-${doc.id}`)?.scrollIntoView({ block: "nearest" });
   }, [expanded, doc.id]);
@@ -172,6 +182,11 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           if (!expanded) startPreviewTimer();
         }}
         onMouseLeave={cancelPreview}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          cancelPreview();
+          setContextOpen(true);
+        }}
       >
         {spec.affordance === "checkbox" ? (
           <button className="check" aria-label={doc.status === "completed" ? "Mark as todo" : "Mark as completed"} title={doc.status === "completed" ? "Mark as todo" : "Mark as completed"} onClick={(e) => { e.stopPropagation(); onToggleComplete(doc); }}>
@@ -317,6 +332,19 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           </button>
         </div>
       </div>
+      {contextOpen && (
+        <div className="document-context-menu" role="menu" onMouseLeave={() => setContextOpen(false)}>
+          <button role="menuitem" type="button" onClick={() => { ui.expand(doc.id); setContextOpen(false); }}>Open</button>
+          <button role="menuitem" type="button" onClick={() => { onTogglePin(doc); setContextOpen(false); }}>{doc.pinned ? "Unpin" : "Pin"}</button>
+          {doc.type === "task" && <button role="menuitem" type="button" onClick={() => { onToggleComplete(doc); setContextOpen(false); }}>{doc.status === "completed" ? "Mark as todo" : "Mark as completed"}</button>}
+          {(doc.type === "task" || doc.type === "note") && <button role="menuitem" type="button" onClick={() => void createRelated().catch((error) => { console.error("Couldn't create related document", error); ui.showToast({ message: "Couldn't create related document" }); }).finally(() => setContextOpen(false))}>New related document</button>}
+          {spec.convertsTo.map((type) => <button key={type} role="menuitem" type="button" onClick={() => { void convertTo(type); setContextOpen(false); }}>Convert to {TYPE_SPECS[type].label}</button>)}
+          <button role="menuitem" type="button" onClick={() => { navigator.clipboard.writeText(`[[${doc.title || "Untitled"}|${doc.id}]]`).then(() => ui.showToast({ message: "Copied document link" })).catch(() => ui.showToast({ message: "Couldn't copy document link" })); setContextOpen(false); }}>Copy link</button>
+          <button role="menuitem" type="button" onClick={() => { void native.readDocument(doc.id).then((source) => navigator.clipboard.writeText(source.body)).then(() => ui.showToast({ message: "Copied note content" })).catch(() => ui.showToast({ message: "Couldn't copy note content" })); setContextOpen(false); }}>Copy content</button>
+          <button role="menuitem" type="button" onClick={() => { void (doc.archived ? native.unarchive(doc.id) : native.archive(doc.id)).then(() => qc.invalidateQueries({ queryKey: ["documents"] })); setContextOpen(false); }}>{doc.archived ? "Restore" : "Archive"}</button>
+          <button role="menuitem" type="button" onClick={() => { ui.requestConfirm({ message: `Move "${doc.title || "Untitled"}" to trash?`, confirmLabel: "Move to trash", onConfirm: () => void native.trash(doc.id).then(() => qc.invalidateQueries({ queryKey: ["documents"] })) }); setContextOpen(false); }}>Trash</button>
+        </div>
+      )}
       {!expanded && (
         <div
           className={`doc-preview${previewVisible ? " expanded" : ""}${previewTruncated ? " truncated" : ""}`}
