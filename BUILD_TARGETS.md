@@ -119,3 +119,15 @@ This produces `dist/`, but it is not a functional Sonata desktop release because
 3. Test the packaged installer or bundle on a clean machine.
 4. Confirm workspace selection, note creation, saving, search, and panel resizing.
 5. Distribute the installer/bundle from `src-tauri/target/<target>/release/bundle/`, not an arbitrary stale executable from another target directory.
+
+## Hosted release builds
+
+Pushing a version tag such as `v0.1.0` runs the GitHub Actions release workflow. It
+builds the Windows NSIS installer, Apple Silicon macOS DMG, and Linux AppImage and
+Deb package on their matching hosted operating systems, then attaches them to a
+GitHub Release. The workflow may also be run manually to verify all three package
+builds without publishing a release.
+
+The macOS package is unsigned and unnotarized. Configure Apple signing and
+notarization credentials before distributing it to users outside your development
+team.
