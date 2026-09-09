@@ -106,7 +106,7 @@ pub fn selection(
             action => Some((action, r)),
         })
         .collect();
-    due.sort_by(|a, b| fire_at(&a.1.reminder_at).cmp(&fire_at(&b.1.reminder_at)));
+    due.sort_by_key(|entry| fire_at(&entry.1.reminder_at));
 
     let mut notify = Vec::new();
     let mut sweep = Vec::new();
