@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 import { useRef, useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MarkdownEditor, type MarkdownEditorHandle } from "./MarkdownEditor";
+import { native } from "../lib/native";
 
-afterEach(() => cleanup());
+afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 function setup(value = "", onChange = vi.fn()) {
   render(<MarkdownEditor value={value} onChange={onChange} ariaLabel="Note body" placeholder="Click to write…" />);
@@ -109,6 +110,30 @@ describe("MarkdownEditor", () => {
     textarea.setSelectionRange(0, 5);
     fireEvent.click(screen.getByRole("button", { name: "Bold" }));
     expect(onChange).toHaveBeenCalledWith("**hello** world");
+  });
+
+  it("inserts a stable document reference from the formatting toolbar", async () => {
+    vi.spyOn(native, "listDocuments").mockResolvedValue([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", title: "Related", type: "note", tags: [], childCount: 0, completedChildCount: 0 }] as never);
+    const { onChange } = setup("hello");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Note body" }));
+    const textarea = screen.getByLabelText("Note body") as HTMLTextAreaElement;
+    textarea.setSelectionRange(5, 5);
+    fireEvent.click(screen.getByRole("button", { name: "Insert in-note document link" }));
+    await waitFor(() => expect(screen.getByRole("option", { name: /Related/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Related/ }));
+    expect(onChange).toHaveBeenLastCalledWith("hello[[Related|01ARZ3NDEKTSV4RRFFQ69G5FAV]]");
+  });
+
+  it("offers document references through the slash menu", async () => {
+    vi.spyOn(native, "listDocuments").mockResolvedValue([{ id: "01ARZ3NDEKTSV4RRFFQ69G5FAV", title: "Related", type: "note", tags: [], childCount: 0, completedChildCount: 0 }] as never);
+    const { onChange } = setup("");
+    fireEvent.click(screen.getByRole("button", { name: "Edit Note body" }));
+    const textarea = screen.getByLabelText("Note body");
+    fireEvent.change(textarea, { target: { value: "/reference", selectionStart: 10 } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    await waitFor(() => expect(screen.getByRole("option", { name: /Related/ })).toBeTruthy());
+    fireEvent.click(screen.getByRole("option", { name: /Related/ }));
+    expect(onChange).toHaveBeenLastCalledWith("[[Related|01ARZ3NDEKTSV4RRFFQ69G5FAV]]");
   });
 
   it("Ctrl+B applies bold via keyboard shortcut", () => {

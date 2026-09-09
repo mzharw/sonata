@@ -1,7 +1,8 @@
 import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type ClipboardEvent, type ComponentType, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type SyntheticEvent } from "react";
+import { createPortal } from "react-dom";
 import { marked, type Token } from "marked";
 import DOMPurify from "dompurify";
-import { IconEye, IconHelp, IconHeading, IconListBullets, IconCheckSquare, IconImagePlus } from "./icons";
+import { IconEye, IconHelp, IconHeading, IconListBullets, IconCheckSquare, IconImagePlus, IconFileText, IconSearch } from "./icons";
 import {
   COMMANDS,
   matchHotkey,
@@ -19,6 +20,8 @@ import { getCaretCoordinates } from "../lib/caretPosition";
 import { ShorthandMenu, type MenuAnchor } from "./ShorthandMenu";
 import type { Attachment } from "../types/domain";
 import { renderWikiLinks } from "../lib/renderMarkdown";
+import { native } from "../lib/native";
+import { useDismiss } from "../hooks/useDismiss";
 
 const MD_OPTS = { gfm: true, breaks: true } as const;
 
@@ -171,6 +174,15 @@ const ATTACHMENT_COMMAND: Command = {
   apply: (value, selection) => ({ value, ...selection }),
 };
 
+const DOCUMENT_REFERENCE_COMMAND: Command = {
+  id: "document-reference",
+  label: "Insert in-note document link",
+  icon: IconFileText,
+  example: "[[Document]]",
+  keywords: ["document", "note", "reference", "wiki", "link"],
+  apply: (value, selection) => ({ value, ...selection }),
+};
+
 function EmptyPlaceholder({
   ariaLabel,
   placeholder,
@@ -272,6 +284,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
 
   const [helpOpen, setHelpOpen] = useState(false);
   const [helpPos, setHelpPos] = useState<MenuAnchor>({ top: 0, left: 0 });
+  const [referencePickerOpen, setReferencePickerOpen] = useState(false);
+  const [referenceQuery, setReferenceQuery] = useState("");
+  const [referenceSource, setReferenceSource] = useState<"toolbar" | "slash">("toolbar");
+  const [referenceDocuments, setReferenceDocuments] = useState<Array<{ id: string; title: string; type: string; tags: string[] }>>([]);
+  const [referencePos, setReferencePos] = useState<MenuAnchor>({ top: 0, left: 0 });
+  const referencePickerRef = useRef<HTMLSpanElement>(null);
+  const referencePopoverRef = useRef<HTMLDivElement>(null);
+  useDismiss(referencePickerOpen, () => setReferencePickerOpen(false), referencePickerRef, referencePopoverRef);
 
   const tokens = useMemo(() => marked.lexer(value, MD_OPTS), [value]);
   const blockRanges = useMemo(() => computeBlockRanges(value, tokens), [value, tokens]);
@@ -280,8 +300,35 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
     const commands = filterCommands(slashQuery);
     const query = slashQuery.trim().toLowerCase();
     const attachmentMatches = !query || ATTACHMENT_COMMAND.label.toLowerCase().includes(query) || ATTACHMENT_COMMAND.keywords?.some((keyword) => keyword.includes(query));
-    return onAttach && attachmentMatches ? [ATTACHMENT_COMMAND, ...commands] : commands;
+    const referenceMatches = !query || DOCUMENT_REFERENCE_COMMAND.label.toLowerCase().includes(query) || DOCUMENT_REFERENCE_COMMAND.keywords?.some((keyword) => keyword.includes(query));
+    return [...(referenceMatches ? [DOCUMENT_REFERENCE_COMMAND] : []), ...(onAttach && attachmentMatches ? [ATTACHMENT_COMMAND] : []), ...commands];
   }, [onAttach, slashQuery]);
+  const referenceMatches = useMemo(() => {
+    const needle = referenceQuery.trim().toLowerCase();
+    return referenceDocuments.filter((candidate) => !needle || `${candidate.title} ${candidate.tags.join(" ")}`.toLowerCase().includes(needle));
+  }, [referenceQuery, referenceDocuments]);
+
+  useEffect(() => {
+    if (!referencePickerOpen) return;
+    let cancelled = false;
+    void native.listDocuments({}).then((documents) => {
+      if (!cancelled) setReferenceDocuments(documents);
+    }).catch((error) => console.error("Couldn't load documents for reference picker", error));
+    return () => { cancelled = true; };
+  }, [referencePickerOpen]);
+
+  useLayoutEffect(() => {
+    if (!referencePickerOpen) return;
+    const place = () => {
+      const rect = referencePickerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      setReferencePos({ top: Math.min(rect.bottom + 5, window.innerHeight - 12), left: Math.max(12, Math.min(rect.left, window.innerWidth - 312)) });
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
+  }, [referencePickerOpen]);
 
   useLayoutEffect(() => {
     const ta = textareaRef.current;
@@ -354,7 +401,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
     setSegment(null);
     setSlashOpen(false);
     setHelpOpen(false);
+    setReferencePickerOpen(false);
     onBlur?.();
+  };
+
+  // The reference picker deliberately focuses its search field. That focus transfer should
+  // not also finish editing the note underneath it.
+  const commitOnTextareaBlur = () => {
+    if (!referencePickerOpen) commit();
   };
 
   const isRawActive = segment?.kind === "all";
@@ -382,6 +436,26 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
     if (rect) setHelpPos({ top: rect.bottom + 6, left: rect.left });
     setSlashOpen(false);
     setHelpOpen((o) => !o);
+  };
+
+  const openReferencePicker = (source: "toolbar" | "slash") => {
+    setReferenceSource(source);
+    setReferenceQuery("");
+    setHelpOpen(false);
+    setSlashOpen(false);
+    setReferencePickerOpen(true);
+  };
+
+  const insertDocumentReference = (candidate: { id: string; title: string }) => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    const token = `[[${candidate.title || "Untitled"}|${candidate.id}]]`;
+    const selection = referenceSource === "slash" ? { start: slashAnchor, end: ta.selectionStart } : { start: ta.selectionStart, end: ta.selectionEnd };
+    const next = draft.slice(0, selection.start) + token + draft.slice(selection.end);
+    handleDraftChange(next);
+    pendingSelection.current = { start: selection.start + token.length, end: selection.start + token.length };
+    setReferencePickerOpen(false);
+    scheduleRestoreSelection();
   };
 
   const updateSlashState = (text: string, caret: number) => {
@@ -428,6 +502,10 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
       setSlashOpen(false);
       scheduleRestoreSelection();
       onAttach();
+      return;
+    }
+    if (command.id === DOCUMENT_REFERENCE_COMMAND.id) {
+      openReferencePicker("slash");
       return;
     }
     const result = command.apply(withoutSlash, { start: slashAnchor, end: slashAnchor });
@@ -584,6 +662,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
               </button>
             );
           })}
+          <span ref={referencePickerRef} className="md-reference-picker">
+            <button type="button" className="icon-btn" aria-label="Insert in-note document link" title="Insert an in-note document link" onMouseDown={(event) => event.preventDefault()} onClick={() => openReferencePicker("toolbar")}><IconFileText size={15} /></button>
+            {referencePickerOpen && createPortal(
+              <div ref={referencePopoverRef} className="document-picker-popover md-reference-popover" role="dialog" aria-label="Insert in-note document link" style={referencePos}>
+                <label className="document-picker-search"><IconSearch size={14} /><input autoFocus value={referenceQuery} onChange={(event) => setReferenceQuery(event.target.value)} placeholder="Search documents…" /></label>
+                <div className="document-picker-results" role="listbox">
+                  {referenceMatches.length ? referenceMatches.map((candidate) => <button key={candidate.id} type="button" role="option" onMouseDown={(event) => event.preventDefault()} onClick={() => insertDocumentReference(candidate)}><span>{candidate.title || "Untitled"}</span><small>{candidate.type}{candidate.tags.length ? ` · #${candidate.tags.join(" #")}` : ""}</small></button>) : <p>No matching documents</p>}
+                </div>
+              </div>
+            , document.body)}
+          </span>
           <span className="md-toolbar-spacer" />
           {onAttach && (
             <button type="button" className="icon-btn" title="Attach file" aria-label="Attach file" onMouseDown={(e) => e.preventDefault()} onClick={onAttach}>
@@ -615,7 +704,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
           onKeyDown={onKeyDown}
           onPaste={onTextareaPaste}
           onSelect={syncSlashOnCaretMove}
-          onBlur={commit}
+          onBlur={commitOnTextareaBlur}
         />
         {slashOpen && (
           <ShorthandMenu anchor={slashPos} items={slashItems} highlight={slashHighlight} onHover={setSlashHighlight} onSelect={insertSlashCommand} label="Insert block" />

@@ -69,7 +69,7 @@ describe("the row context menu", () => {
     mount({ type: "task" });
     fireEvent.contextMenu(screen.getByText("Sort me out"));
     expect(screen.getByRole("menuitem", { name: "Open" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "New related document" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "New subtask" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Copy link" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Archive" })).toBeTruthy();
   });

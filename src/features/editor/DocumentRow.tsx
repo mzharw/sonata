@@ -14,6 +14,7 @@ import { TYPE_SPECS, type RowChip } from "../../lib/documentTypes";
 import { TypeSelect } from "../../components/TypeSelect";
 import { BacklinksPanel } from "../../components/BacklinksPanel";
 import { RelatedDocuments } from "../../components/RelatedDocuments";
+import { SubtasksPanel } from "../../components/SubtasksPanel";
 import { useTypeConversion } from "../../hooks/useTypeConversion";
 import { STATUS_OPTIONS } from "../../lib/statusOptions";
 import { stageLabel } from "../../lib/stageOptions";
@@ -168,14 +169,25 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   const createRelated = async () => {
     const source = await native.readDocument(doc.id);
     const isChildTask = source.type === "task";
-    const created = await native.createDocument({ type: isChildTask ? "task" : "note", title: "Untitled", parent: isChildTask ? source.id : undefined, links: [source.id] });
-    await native.updateDocument({ ...source, links: [...(source.links ?? []), created.id] }, source.contentHash);
+    const created = await native.createDocument({
+      type: isChildTask ? "task" : "note",
+      title: "Untitled",
+      // A subtask is a hierarchy edge, not a pair of related-document metadata links.
+      // This is what makes it—and only it—appear in the parent's progress panel.
+      parent: isChildTask ? source.id : undefined,
+      ...(isChildTask ? {} : { links: [source.id] }),
+    });
+    if (!isChildTask) {
+      await native.updateDocument({ ...source, links: [...(source.links ?? []), created.id] }, source.contentHash);
+    }
     qc.invalidateQueries({ queryKey: ["documents"] });
     ui.expand(created.id);
   };
 
   useEffect(() => {
-    if (expanded) document.getElementById(`doc-${doc.id}`)?.scrollIntoView({ block: "nearest" });
+    // Opening a referenced document should put its title and detail at a predictable
+    // location. `nearest` left it partly hidden at the bottom of the scrollport.
+    if (expanded) document.getElementById(`doc-${doc.id}`)?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [expanded, doc.id]);
 
   return (
@@ -352,7 +364,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           <button role="menuitem" type="button" onClick={() => { ui.expand(doc.id); ui.closeContextMenu(); }}>Open</button>
           <button role="menuitem" type="button" onClick={() => { onTogglePin(doc); ui.closeContextMenu(); }}>{doc.pinned ? "Unpin" : "Pin"}</button>
           {doc.type === "task" && <button role="menuitem" type="button" onClick={() => { onToggleComplete(doc); ui.closeContextMenu(); }}>{doc.status === "completed" ? "Mark as todo" : "Mark as completed"}</button>}
-          {(doc.type === "task" || doc.type === "note") && <button role="menuitem" type="button" onClick={() => void createRelated().catch((error) => { console.error("Couldn't create related document", error); ui.showToast({ message: "Couldn't create related document" }); }).finally(() => ui.closeContextMenu())}>New related document</button>}
+          {(doc.type === "task" || doc.type === "note") && <button role="menuitem" type="button" onClick={() => void createRelated().catch((error) => { console.error("Couldn't create related document", error); ui.showToast({ message: "Couldn't create related document" }); }).finally(() => ui.closeContextMenu())}>{doc.type === "task" ? "New subtask" : "New related document"}</button>}
           {spec.convertsTo.map((type) => <button key={type} role="menuitem" type="button" onClick={() => { void convertTo(type); ui.closeContextMenu(); }}>Convert to {TYPE_SPECS[type].label}</button>)}
           <button role="menuitem" type="button" onClick={() => { navigator.clipboard.writeText(`[[${doc.title || "Untitled"}|${doc.id}]]`).then(() => ui.showToast({ message: "Copied document link" })).catch(() => ui.showToast({ message: "Couldn't copy document link" })); ui.closeContextMenu(); }}>Copy link</button>
           <button role="menuitem" type="button" onClick={() => { void native.readDocument(doc.id).then((source) => navigator.clipboard.writeText(source.body)).then(() => ui.showToast({ message: "Copied note content" })).catch(() => ui.showToast({ message: "Couldn't copy note content" })); ui.closeContextMenu(); }}>Copy content</button>
@@ -394,6 +406,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           </div>
           <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
           <RelatedDocuments doc={full} onChange={setFull} />
+          {full.type === "task" && <SubtasksPanel id={full.id} onOpen={(id) => ui.expand(id)} />}
           <MarkdownEditor
             ref={bodyEditorRef}
             ariaLabel="Note body"

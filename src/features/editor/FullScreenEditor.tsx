@@ -9,6 +9,7 @@ import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
 import { useTypeConversion } from "../../hooks/useTypeConversion";
 import { BacklinksPanel } from "../../components/BacklinksPanel";
 import { RelatedDocuments } from "../../components/RelatedDocuments";
+import { SubtasksPanel } from "../../components/SubtasksPanel";
 import { TYPE_SPECS } from "../../lib/documentTypes";
 import { wordCount } from "../../lib/wordCount";
 import { native } from "../../lib/native";
@@ -106,6 +107,7 @@ export function FullScreenEditor({ id }: { id: string }) {
             )}
             <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
             <RelatedDocuments doc={full} onChange={setFull} />
+            {full.type === "task" && <SubtasksPanel id={full.id} onOpen={(target) => { ui.openFullScreen(undefined); ui.expand(target); }} />}
             <MarkdownEditor
               ref={bodyEditorRef}
               ariaLabel="Note body"
