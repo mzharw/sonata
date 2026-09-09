@@ -25,7 +25,7 @@ export function AttachmentButton({ doc, onChange, onNotice, className }: { doc: 
   };
 
   return (
-    <button type="button" className={`icon-btn ${className ?? ""}`} aria-label={doc.cover ? "Change cover image" : "Add cover image"} title={doc.cover ? "Change cover image" : "Add cover image"} onClick={() => void attach()} disabled={importing}>
+    <button type="button" className={`icon-btn ${className ?? ""}`} aria-label={doc.cover ? "Change cover image" : "Add cover image"} onClick={() => void attach()} disabled={importing}>
       <IconImagePlus size={15} />
       <span>{importing ? "Importing…" : doc.cover ? "Change cover" : "Add cover image"}</span>
     </button>
