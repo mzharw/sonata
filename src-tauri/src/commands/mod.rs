@@ -15,6 +15,7 @@ use std::{
     sync::Mutex,
 };
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_autostart::ManagerExt;
 use ulid::Ulid;
 pub struct Session {
     pub workspace: Workspace,
@@ -129,6 +130,39 @@ pub fn set_sidebar_resizing(resizing: bool, app: AppHandle) -> Result<()> {
 pub fn set_sidebar_picker_open(picker_open: bool, app: AppHandle) -> Result<()> {
     crate::windows::sidebar::set_picker_open(&app, picker_open);
     Ok(())
+}
+#[tauri::command]
+pub fn preferences(app: AppHandle) -> crate::preferences::Preferences {
+    crate::preferences::current(&app)
+}
+#[tauri::command]
+pub fn save_preferences(
+    preferences: crate::preferences::Preferences,
+    app: AppHandle,
+) -> Result<crate::preferences::Preferences> {
+    crate::preferences::save(&app, preferences)
+}
+#[tauri::command]
+pub fn reset_preferences(app: AppHandle) -> Result<crate::preferences::Preferences> {
+    let preferences = crate::preferences::reset(&app)?;
+    let _ = app.autolaunch().disable();
+    Ok(preferences)
+}
+#[tauri::command]
+pub fn autostart_enabled(app: AppHandle) -> Result<bool> {
+    app.autolaunch()
+        .is_enabled()
+        .map_err(|error| SonataError::WorkspaceUnavailable(error.to_string()))
+}
+#[tauri::command]
+pub fn set_autostart(enabled: bool, app: AppHandle) -> Result<()> {
+    let launcher = app.autolaunch();
+    if enabled {
+        launcher.enable()
+    } else {
+        launcher.disable()
+    }
+    .map_err(|error| SonataError::WorkspaceUnavailable(error.to_string()))
 }
 fn session<'a>(state: &'a AppState) -> Result<std::sync::MutexGuard<'a, Option<Session>>> {
     let guard = state

@@ -14,10 +14,10 @@ import { TypeSelect } from "../../components/TypeSelect";
 import { detectUrl, normalizeUrl, urlDomain } from "../../lib/url";
 import { IconBell, IconChevronDown, IconChevronUp, IconMaximize, IconPlus } from "../../components/icons";
 import { ALL_SHORTHAND_SUGGESTIONS, applyShorthandSuggestion, opensWithTypeKeyword, shorthandSuggestions, type ShorthandSuggestion } from "../../lib/shorthand";
-import { CAPTURE_HOTKEY, NEW_NOTE_HOTKEY, hasMod } from "../../lib/hotkeys";
+import { DEFAULT_PREFERENCES, shortcutLabel, matchesShortcut } from "../../lib/preferences";
 import type { DocumentType, IdeaStage, Priority, TaskStatus } from "../../types/domain";
 
-export function QuickAdd() {
+export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, newNoteShortcut = DEFAULT_PREFERENCES.shortcuts.newNote, visible = true }: { shortcut?: string; newNoteShortcut?: string; visible?: boolean }) {
   const ui = useUi();
   const qc = useQueryClient();
   const [text, setText] = useState("");
@@ -30,6 +30,7 @@ export function QuickAdd() {
   const [flash, setFlash] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [expanded, setExpanded] = useState(false);
+  const [temporary, setTemporary] = useState(false);
   // Capture lands in the inbox, matching the Rust default, which is what makes the
   // Triage verb on an inbox row mean anything.
   const [type, setType] = useState<DocumentType>(DEFAULT_CAPTURE_TYPE);
@@ -119,6 +120,7 @@ export function QuickAdd() {
       setCaret(0);
       setSuggestOpen(false);
       setShowShorthandReference(false);
+      if (!visible) setTemporary(false);
       afterCreate(doc.id);
     } catch (error) {
       console.error("Quick capture failed", error);
@@ -156,6 +158,7 @@ export function QuickAdd() {
       setStage(undefined);
       setUrl("");
       setExpanded(false);
+      if (!visible) setTemporary(false);
       afterCreate(doc.id);
     } catch (error) {
       console.error("Failed to create document", error);
@@ -196,14 +199,22 @@ export function QuickAdd() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== "n" || !hasMod(event) || event.altKey) return;
-      event.preventDefault();
-      if (event.shiftKey) void hotkeyActions.current.openBlankFullEditor();
-      else hotkeyActions.current.focusCapture();
+      if (matchesShortcut(event, newNoteShortcut)) {
+        event.preventDefault();
+        void hotkeyActions.current.openBlankFullEditor();
+      } else if (matchesShortcut(event, shortcut) || (shortcut === DEFAULT_PREFERENCES.shortcuts.capture && event.key.toLowerCase() === "n" && event.ctrlKey && !event.shiftKey && !event.altKey)) {
+        event.preventDefault();
+        if (!visible) {
+          setTemporary(true);
+          requestAnimationFrame(() => hotkeyActions.current.focusCapture());
+        } else hotkeyActions.current.focusCapture();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [shortcut, newNoteShortcut, visible]);
+
+  if (!visible && !temporary) return null;
 
   return (
     <div className="quick-add-wrap" onKeyDown={(e) => { if (e.key === "Escape" && expanded) setExpanded(false); }}>
@@ -325,15 +336,15 @@ export function QuickAdd() {
             </span>
           )}
           {!text.trim() && !focused && (
-            <span className="quick-add-hint idle" title={`Jump here from anywhere with ${CAPTURE_HOTKEY}`}>
-              <kbd>{CAPTURE_HOTKEY}</kbd>
+            <span className="quick-add-hint idle" title={`Jump here with ${shortcutLabel(shortcut)}`}>
+              <kbd>{shortcutLabel(shortcut)}</kbd>
             </span>
           )}
         </div>
         <button className="icon-btn" aria-label={expanded ? "Collapse add form" : "Expand add form"} title={expanded ? "Collapse add form" : "More fields"} aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
           {expanded ? <IconChevronUp /> : <IconChevronDown />}
         </button>
-        <button className="icon-btn" aria-label={`New note in full-screen editor (${NEW_NOTE_HOTKEY})`} title={`New note in full-screen editor (${NEW_NOTE_HOTKEY})`} onClick={() => void openBlankFullEditor()}>
+        <button className="icon-btn" aria-label={`New note in full-screen editor (${shortcutLabel(newNoteShortcut)})`} title={`New note in full-screen editor (${shortcutLabel(newNoteShortcut)})`} onClick={() => void openBlankFullEditor()}>
           <IconMaximize />
         </button>
       </div>

@@ -5,6 +5,8 @@ pub mod domain;
 pub mod errors;
 pub mod indexer;
 pub mod markdown;
+#[cfg(feature = "desktop")]
+pub mod preferences;
 pub mod relations;
 pub mod reminders;
 #[cfg(feature = "desktop")]
@@ -26,6 +28,12 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState(std::sync::Mutex::new(None)))
         .manage(windows::sidebar::SidebarState::default())
+        .manage(preferences::PreferencesState::default())
+        .manage(preferences::GlobalShortcutState::default())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_opener::init())
@@ -37,7 +45,10 @@ pub fn run() {
             });
         }))
         .setup(|app| {
+            let preferences = preferences::load(app.handle());
+            preferences::apply_panel_shortcut(app.handle(), preferences.panel_shortcut.as_deref())?;
             windows::sidebar::install(app.handle())?;
+            windows::sidebar::apply_preferences(app.handle(), &preferences);
             reminders::spawn_watcher(app.handle().clone());
             let open_item = MenuItem::with_id(app, "open", "Open Sonata", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Sonata", true, None::<&str>)?;
@@ -79,6 +90,11 @@ pub fn run() {
             commands::resize_sidebar,
             commands::set_sidebar_resizing,
             commands::set_sidebar_picker_open,
+            commands::preferences,
+            commands::save_preferences,
+            commands::reset_preferences,
+            commands::autostart_enabled,
+            commands::set_autostart,
             commands::list_documents,
             commands::read_document,
             commands::create_document,

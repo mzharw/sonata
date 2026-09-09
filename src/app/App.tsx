@@ -14,8 +14,8 @@ import { IconSearch } from "../components/icons";
 import { IconSettings } from "../components/icons";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { Logo } from "../components/Logo";
-import { PALETTE_HOTKEY, SEARCH_HOTKEY } from "../lib/hotkeys";
 import { native } from "../lib/native";
+import { DEFAULT_PREFERENCES, matchesShortcut, shortcutLabel } from "../lib/preferences";
 import { sections } from "../features/search/views";
 
 function LockScreen({ unlock }: { unlock: () => void }) {
@@ -57,22 +57,31 @@ export default function App() {
   const [locked, setLocked] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const lock = useQuery({ queryKey: ["workspace-lock"], queryFn: native.workspaceLockStatus, retry: false });
+  const preferences = useQuery({ queryKey: ["preferences"], queryFn: native.preferences, retry: false });
+  const prefs = preferences.data ?? DEFAULT_PREFERENCES;
+
+  useEffect(() => {
+    const root = document.documentElement;
+    root.dataset.theme = prefs.theme;
+    root.dataset.accent = prefs.accent;
+    root.dataset.density = prefs.density;
+    root.dataset.motion = prefs.motion;
+  }, [prefs]);
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (!event.altKey || event.ctrlKey || event.metaKey) return;
-      if (event.key.toLowerCase() === "s") {
+      if (matchesShortcut(event, prefs.shortcuts.search)) {
         event.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
-      } else if (event.key.toLowerCase() === "k") {
+      } else if (matchesShortcut(event, prefs.shortcuts.palette)) {
         event.preventDefault();
         ui.setPalette(true);
       }
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [ui]);
+  }, [ui, prefs.shortcuts]);
 
   useEffect(() => {
     if (lock.data?.enabled) setLocked(true);
@@ -107,6 +116,7 @@ export default function App() {
   if (locked) return <LockScreen unlock={() => setLocked(false)} />;
 
   if (ui.fullScreenId) return <FullScreenEditor id={ui.fullScreenId} />;
+  if (settings) return <SettingsPanel close={() => setSettings(false)} onLock={() => setLocked(true)} />;
 
   return (
     <main
@@ -122,23 +132,22 @@ export default function App() {
         <div className="search">
           <IconSearch size={14} />
           <input ref={searchRef} aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
-          <kbd className="search-focus-hotkey" title="Focus search">{SEARCH_HOTKEY}</kbd>
-          <button type="button" className="search-hotkey" aria-label="Open command palette" title={`Open command palette (${PALETTE_HOTKEY})`} onClick={() => ui.setPalette(true)}>
-            <kbd>{PALETTE_HOTKEY}</kbd>
+          <kbd className="search-focus-hotkey" title="Focus search">{shortcutLabel(prefs.shortcuts.search)}</kbd>
+          <button type="button" className="search-hotkey" aria-label="Open command palette" title={`Open command palette (${shortcutLabel(prefs.shortcuts.palette)})`} onClick={() => ui.setPalette(true)}>
+            <kbd>{shortcutLabel(prefs.shortcuts.palette)}</kbd>
           </button>
         </div>
         <ViewMenu />
         <FilterMenu />
         <button className="icon-btn" aria-label="Settings" title="Settings" onClick={() => setSettings(true)}><IconSettings size={15} /></button>
       </header>
-      <TagChipsBar />
+      {prefs.showTags && <TagChipsBar />}
       <DocumentList search={search} />
-      <QuickAdd />
+      <QuickAdd shortcut={prefs.shortcuts.capture} newNoteShortcut={prefs.shortcuts.newNote} visible={prefs.showQuickAdd} />
       <NavigationContextMenu />
       {ui.palette && <CommandPalette close={() => ui.setPalette(false)} />}
       {ui.confirm && <ConfirmDialog request={ui.confirm} onCancel={ui.clearConfirm} />}
       {ui.toast && <Toast toast={ui.toast} onDismiss={ui.clearToast} />}
-      {settings && <SettingsPanel close={() => setSettings(false)} onLock={() => setLocked(true)} />}
     </main>
   );
 }

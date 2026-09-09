@@ -47,6 +47,10 @@ pub struct SidebarTransition {
     /// so a display or scaling change is picked up instead of carried over.
     pub width: Option<u32>,
     pub generation: u64,
+    pub hover_enabled: bool,
+    pub auto_hide: bool,
+    pub hover_delay: Duration,
+    pub pause_hover_fullscreen: bool,
 }
 
 /// Physical-pixel panel geometry for one monitor.
@@ -124,6 +128,17 @@ pub fn install(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+pub fn apply_preferences(app: &AppHandle, preferences: &crate::preferences::Preferences) {
+    let sidebar = app.state::<SidebarState>();
+    if let Ok(mut state) = sidebar.0.lock() {
+        state.hover_enabled = preferences.hover_enabled;
+        state.auto_hide = preferences.auto_hide;
+        state.hover_delay = Duration::from_millis(preferences.hover_delay_ms);
+        state.pause_hover_fullscreen = preferences.pause_hover_fullscreen;
+        state.width = preferences.panel_width;
+    };
+}
+
 pub fn reveal(app: &AppHandle) -> tauri::Result<()> {
     let main = main_window(app)?;
     let (right, top, height) = primary_monitor_area(app)?;
@@ -199,6 +214,7 @@ pub fn resize_from_left(app: &AppHandle, requested_width: u32) -> tauri::Result<
         let mut state = sidebar.0.lock().expect("sidebar state lock");
         state.width = Some(width);
     }
+    crate::preferences::record_panel_width(app, width);
     #[cfg(windows)]
     {
         // SetWindowPos applies the new rectangle as one native operation.  A
@@ -315,18 +331,30 @@ fn start_windows_edge_monitor(app: AppHandle) {
                 ))
             });
 
-            let in_activation_zone = pointer
-                .map(
-                    |(cursor_x, cursor_y, monitor_x, monitor_y, width, height)| {
-                        let zone_height = ((height * 2) / 5).max(EDGE_ZONE_MIN_HEIGHT);
-                        let zone_top = monitor_y + (height - zone_height) / 2;
-                        cursor_x >= monitor_x + width - EDGE_ZONE_WIDTH
-                            && cursor_x < monitor_x + width
-                            && cursor_y >= zone_top
-                            && cursor_y < zone_top + zone_height
-                    },
+            let (hover_enabled, auto_hide, hover_delay, pause_hover_fullscreen) = {
+                let sidebar = app.state::<SidebarState>();
+                let state = sidebar.0.lock().expect("sidebar state lock");
+                (
+                    state.hover_enabled,
+                    state.auto_hide,
+                    state.hover_delay,
+                    state.pause_hover_fullscreen,
                 )
-                .unwrap_or(false);
+            };
+            let in_activation_zone = hover_enabled
+                && !(pause_hover_fullscreen && foreground_window_covers_primary_monitor(&app))
+                && pointer
+                    .map(
+                        |(cursor_x, cursor_y, monitor_x, monitor_y, width, height)| {
+                            let zone_height = ((height * 2) / 5).max(EDGE_ZONE_MIN_HEIGHT);
+                            let zone_top = monitor_y + (height - zone_height) / 2;
+                            cursor_x >= monitor_x + width - EDGE_ZONE_WIDTH
+                                && cursor_x < monitor_x + width
+                                && cursor_y >= zone_top
+                                && cursor_y < zone_top + zone_height
+                        },
+                    )
+                    .unwrap_or(false);
             if in_activation_zone && !was_in_activation_zone {
                 let _ = reveal(&app);
             }
@@ -341,7 +369,7 @@ fn start_windows_edge_monitor(app: AppHandle) {
                 let state = sidebar.0.lock().expect("sidebar state lock");
                 (state.is_open, state.is_resizing, state.is_picker_open)
             };
-            if is_open && !is_resizing {
+            if is_open && auto_hide && !is_resizing {
                 let panel_width = main_window(&app)
                     .and_then(|window| window.outer_size())
                     .map(|size| size.width as i32)
@@ -363,7 +391,7 @@ fn start_windows_edge_monitor(app: AppHandle) {
                 } else if waiting_for_panel_reentry {
                     left_panel_at = None;
                 } else if let Some(left_at) = left_panel_at {
-                    if left_at.elapsed() >= LEAVE_DELAY {
+                    if left_at.elapsed() >= hover_delay {
                         let _ = conceal(&app);
                         left_panel_at = None;
                     }
@@ -376,6 +404,44 @@ fn start_windows_edge_monitor(app: AppHandle) {
             thread::sleep(Duration::from_millis(40));
         }
     });
+}
+
+/// This intentionally asks only whether the foreground window covers the
+/// monitor, not whether it is a particular game. It avoids application-name
+/// heuristics and keeps tray/shortcut activation available.
+#[cfg(windows)]
+fn foreground_window_covers_primary_monitor(app: &AppHandle) -> bool {
+    use windows_sys::Win32::{
+        Foundation::RECT,
+        UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowRect},
+    };
+    let foreground = unsafe { GetForegroundWindow() };
+    if foreground.is_null() {
+        return false;
+    }
+    if main_window(app)
+        .ok()
+        .and_then(|window| window.hwnd().ok())
+        .is_some_and(|own| own.0 == foreground)
+    {
+        return false;
+    }
+    let Some(monitor) = app.primary_monitor().ok().flatten() else {
+        return false;
+    };
+    let position = monitor.position();
+    let size = monitor.size();
+    let mut rect = RECT {
+        left: 0,
+        top: 0,
+        right: 0,
+        bottom: 0,
+    };
+    (unsafe { GetWindowRect(foreground, &mut rect) != 0 })
+        && rect.left <= position.x
+        && rect.top <= position.y
+        && rect.right >= position.x + size.width as i32
+        && rect.bottom >= position.y + size.height as i32
 }
 
 #[cfg(not(windows))]

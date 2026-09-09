@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Attachment, DocumentSummary, DocumentType, SearchQuery, SonataDocument } from "../types/domain";
+import type { Preferences } from "./preferences";
 
 async function setSidebarPickerOpen(pickerOpen: boolean) {
   try {
@@ -25,6 +26,11 @@ async function openWithSidebarFrozen(options: Parameters<typeof open>[0]) {
 export const native = {
   showSidebar: () => invoke<void>("show_sidebar"),
   hideSidebar: () => invoke<void>("hide_sidebar"),
+  preferences: () => invoke<Preferences>("preferences"),
+  savePreferences: (preferences: Preferences) => invoke<Preferences>("save_preferences", { preferences }),
+  resetPreferences: () => invoke<Preferences>("reset_preferences"),
+  autostartEnabled: () => invoke<boolean>("autostart_enabled"),
+  setAutostart: (enabled: boolean) => invoke<void>("set_autostart", { enabled }),
   listDocuments: (query: SearchQuery = {}) => invoke<DocumentSummary[]>("list_documents", { query }),
   readDocument: (id: string) => invoke<SonataDocument>("read_document", { id }),
   createDocument: (input: Partial<SonataDocument>) => invoke<SonataDocument>("create_document", { input }),
