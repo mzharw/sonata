@@ -66,21 +66,21 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   const [rawActive, setRawActive] = useState(false);
   const [headerIsStuck, setHeaderIsStuck] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [showPreview, setShowPreview] = useState(false);
   const contextOpen = ui.contextMenu?.kind === "document" && ui.contextMenu.documentId === doc.id;
-  const preview = useQuery({ queryKey: ["preview", doc.id], queryFn: () => native.readDocument(doc.id), enabled: showPreview, staleTime: 60_000 });
-  const previewVisible = Boolean(showPreview && preview.data?.body.trim());
+  const previewActive = ui.previewedId === doc.id;
+  const preview = useQuery({ queryKey: ["preview", doc.id], queryFn: () => native.readDocument(doc.id), enabled: previewActive, staleTime: 60_000, gcTime: 30_000 });
+  const previewVisible = Boolean(previewActive && preview.data?.body.trim());
   const previewTruncated = (preview.data?.body.length ?? 0) > 500;
   const attachmentUrls = useAttachmentUrls(full?.body ?? preview.data?.body ?? "", full?.cover);
 
   const startPreviewTimer = () => {
     clearTimeout(hoverTimer.current);
-    hoverTimer.current = setTimeout(() => setShowPreview(true), HOVER_PREVIEW_DELAY_MS);
+    hoverTimer.current = setTimeout(() => ui.preview(doc.id), HOVER_PREVIEW_DELAY_MS);
   };
 
   const cancelPreview = () => {
     clearTimeout(hoverTimer.current);
-    setShowPreview(false);
+    if (ui.previewedId === doc.id) ui.preview(undefined);
   };
 
   useEffect(() => () => clearTimeout(hoverTimer.current), []);
@@ -179,7 +179,15 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   }, [expanded, doc.id]);
 
   return (
-    <li id={`doc-${doc.id}`} className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${doc.pinned ? " pinned" : ""}${attention ? " needs-attention" : ""}`}>
+    <li
+      id={`doc-${doc.id}`}
+      className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${doc.pinned ? " pinned" : ""}${attention ? " needs-attention" : ""}`}
+      // The preview sits below `.doc-row`. Keeping hover ownership on the whole list item
+      // prevents a pointer moving into that preview from cancelling it, collapsing the card,
+      // and then accidentally activating the next row in a long list.
+      onMouseEnter={() => { if (!expanded) startPreviewTimer(); }}
+      onMouseLeave={cancelPreview}
+    >
       {expanded && <span ref={headerSentinelRef} className="doc-header-sentinel" aria-hidden="true" />}
       <div
         className={`doc-row${headerIsStuck ? " is-sticky" : ""}`}
@@ -188,10 +196,6 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           if (attention) onAcknowledge(doc, attention);
           ui.expand(expanded ? undefined : doc.id);
         }}
-        onMouseEnter={() => {
-          if (!expanded) startPreviewTimer();
-        }}
-        onMouseLeave={cancelPreview}
         onContextMenu={(event) => {
           event.preventDefault();
           event.stopPropagation();

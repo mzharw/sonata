@@ -4,7 +4,10 @@ use crate::{
     markdown,
 };
 use rusqlite::{params, Connection, OptionalExtension};
-use std::path::Path;
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 /// Bumped whenever `SCHEMA` changes shape. A mismatch drops and recreates the derived
 /// tables rather than patching them, because `indexer::rebuild` refills them anyway.
 const SCHEMA_VERSION: i64 = 4;
@@ -117,7 +120,9 @@ impl Index {
         Ok(())
     }
     pub fn get(&self, id: &str) -> Result<SonataDocument> {
-        self.conn.query_row("SELECT id,path,type,title,body,status,priority,due_at,reminder_at,parent_id,archived,created_at,updated_at,content_hash,pinned,stage,bookmark_url,acknowledged_due,acknowledged_reminder FROM documents WHERE id=?1", [id], row_doc).map_err(Into::into)
+        let mut document = self.conn.query_row("SELECT id,path,type,title,body,status,priority,due_at,reminder_at,parent_id,archived,created_at,updated_at,content_hash,pinned,stage,bookmark_url,acknowledged_due,acknowledged_reminder FROM documents WHERE id=?1", [id], row_doc)?;
+        document.tags = self.tags_for(id)?;
+        Ok(document)
     }
     pub fn list(&self, query: &SearchQuery) -> Result<Vec<DocumentSummary>> {
         let mut sql = String::from("SELECT d.id,d.path,d.type,d.title,d.body,d.status,d.priority,due_at,reminder_at,parent_id,d.archived,d.created_at,d.updated_at,d.content_hash,d.pinned,d.stage,d.bookmark_url,d.acknowledged_due,d.acknowledged_reminder,(SELECT count(*) FROM documents c WHERE c.parent_id=d.id),(SELECT count(*) FROM documents c WHERE c.parent_id=d.id AND c.status='completed') FROM documents d WHERE 1=1");
@@ -227,8 +232,9 @@ impl Index {
                 completed_child_count: r.get(20)?,
             })
         })?;
-        rows.collect::<std::result::Result<Vec<_>, _>>()
-            .map_err(Into::into)
+        let mut summaries = rows.collect::<std::result::Result<Vec<_>, _>>()?;
+        self.populate_summary_tags(&mut summaries)?;
+        Ok(summaries)
     }
     /// Reminders that are set and not yet delivered *for their current value*.
     ///
@@ -296,6 +302,47 @@ impl Index {
                 })
             })
             .collect()
+    }
+
+    fn tags_for(&self, id: &str) -> Result<Vec<String>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT tag FROM document_tags WHERE document_id=?1 ORDER BY tag")?;
+        let tags = statement
+            .query_map([id], |row| row.get(0))?
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(Into::into);
+        tags
+    }
+
+    /// List results need their tags for the row chips. Fetch all selected documents'
+    /// tags in one pass instead of issuing one query per row — large workspaces commonly
+    /// have hundreds of documents in a list.
+    fn populate_summary_tags(&self, summaries: &mut [DocumentSummary]) -> Result<()> {
+        let ids: HashSet<&str> = summaries
+            .iter()
+            .map(|summary| summary.document.id.as_str())
+            .collect();
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let mut tags: HashMap<String, Vec<String>> = HashMap::new();
+        let mut statement = self
+            .conn
+            .prepare("SELECT document_id,tag FROM document_tags ORDER BY tag")?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        for row in rows {
+            let (id, tag) = row?;
+            if ids.contains(id.as_str()) {
+                tags.entry(id).or_default().push(tag);
+            }
+        }
+        for summary in summaries {
+            summary.document.tags = tags.remove(&summary.document.id).unwrap_or_default();
+        }
+        Ok(())
     }
 }
 fn row_doc(r: &rusqlite::Row<'_>) -> rusqlite::Result<SonataDocument> {
@@ -416,6 +463,21 @@ mod list_filter_tests {
             },
         );
         assert_eq!(found, vec!["both"]);
+    }
+
+    #[test]
+    fn list_and_get_include_document_tags() {
+        let index = index();
+        seed_with(&index, DocumentType::Note, "tagged", |doc| {
+            doc.tags = vec!["urgent".into(), "work".into()]
+        });
+
+        let listed = index.list(&SearchQuery::default()).unwrap();
+        assert_eq!(listed[0].document.tags, vec!["urgent", "work"]);
+        assert_eq!(
+            index.get(&listed[0].document.id).unwrap().tags,
+            vec!["urgent", "work"]
+        );
     }
 
     #[test]

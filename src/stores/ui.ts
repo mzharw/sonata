@@ -23,6 +23,7 @@ interface Ui {
   confirm?: ConfirmRequest;
   toast?: ToastRequest;
   contextMenu?: ContextMenu;
+  previewedId?: string;
   setView: (view: View, tag?: string) => void;
   expand: (id?: string) => void;
   openFullScreen: (id?: string) => void;
@@ -35,6 +36,7 @@ interface Ui {
   clearToast: () => void;
   openContextMenu: (menu: ContextMenu) => void;
   closeContextMenu: () => void;
+  preview: (id?: string) => void;
 }
 export const useUi = create<Ui>((set) => ({
   view: "all",
@@ -54,4 +56,5 @@ export const useUi = create<Ui>((set) => ({
   clearToast: () => set({ toast: undefined }),
   openContextMenu: (contextMenu) => set({ contextMenu }),
   closeContextMenu: () => set({ contextMenu: undefined }),
+  preview: (previewedId) => set({ previewedId }),
 }));

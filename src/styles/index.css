@@ -244,7 +244,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .doc-type-task .check{color:var(--check)}
 
 .doc-preview{position:relative;max-height:0;overflow:hidden;transition:max-height .18s ease;cursor:pointer}
-.doc-preview.expanded{max-height:none;border-top:1px solid var(--border-strong)}
+.doc-preview.expanded{max-height:220px;border-top:1px solid var(--border-strong)}
 .doc-preview.expanded.truncated{max-height:200px}
 .doc-preview .md-prose{padding:14px 20px 18px;font-size:13px;-webkit-mask-image:linear-gradient(to bottom,#000 75%,transparent 100%);mask-image:linear-gradient(to bottom,#000 75%,transparent 100%)}
 .doc-preview.expanded:not(.truncated) .md-prose{-webkit-mask-image:none;mask-image:none}
