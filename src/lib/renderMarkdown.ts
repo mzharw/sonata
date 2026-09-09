@@ -13,5 +13,8 @@ export function renderWikiLinks(source: string): string {
 export function renderMarkdownPreview(source: string, maxChars = 500, attachmentUrls: Record<string, string> = {}): string {
   const truncated = source.length > maxChars ? `${source.slice(0, maxChars)}…` : source;
   const html = marked.parse(renderWikiLinks(truncated), MD_OPTS) as string;
-  return DOMPurify.sanitize(html.replace(/(src=")(attachments\/[A-Za-z0-9_./-]+)(")/g, (_all, before: string, path: string, after: string) => `${before}${attachmentUrls[path] ?? path}${after}`));
+  const sanitized = DOMPurify.sanitize(html.replace(/(src=")(attachments\/[A-Za-z0-9_./-]+)(")/g, (_all, before: string, path: string, after: string) => `${before}${attachmentUrls[path] ?? path}${after}`));
+  // The opener plugin handles target=_blank anchors at the native layer. This remains a
+  // reliable system-browser path even where a parent preview click handler is not involved.
+  return sanitized.replace(/<a href="((?!https:\/\/sonata\.invalid\/document\/)(?:https?:|mailto:)[^"]+)"/gi, '<a target="_blank" rel="noopener noreferrer" href="$1"');
 }

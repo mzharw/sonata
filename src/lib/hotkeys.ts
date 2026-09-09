@@ -4,6 +4,8 @@
 export const IS_MAC = typeof navigator !== "undefined" && /mac/i.test(navigator.userAgent);
 
 export const PALETTE_HOTKEY = IS_MAC ? "⌥K" : "Alt+K";
+/** Focuses the document search field. */
+export const SEARCH_HOTKEY = IS_MAC ? "⌥S" : "Alt+S";
 /** Focuses the quick-add input. */
 export const CAPTURE_HOTKEY = IS_MAC ? "⌘N" : "Ctrl+N";
 /** Creates a note and opens it in the full-screen editor. */

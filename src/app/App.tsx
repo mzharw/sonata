@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useUi } from "../stores/ui";
 import { ViewMenu } from "../features/tags/ViewMenu";
@@ -14,7 +14,7 @@ import { IconSearch } from "../components/icons";
 import { IconSettings } from "../components/icons";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { Logo } from "../components/Logo";
-import { PALETTE_HOTKEY } from "../lib/hotkeys";
+import { PALETTE_HOTKEY, SEARCH_HOTKEY } from "../lib/hotkeys";
 import { native } from "../lib/native";
 import { sections } from "../features/search/views";
 
@@ -55,11 +55,17 @@ export default function App() {
   const [search, setSearch] = useState("");
   const [settings, setSettings] = useState(false);
   const [locked, setLocked] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   const lock = useQuery({ queryKey: ["workspace-lock"], queryFn: native.workspaceLockStatus, retry: false });
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (event.altKey && event.key.toLowerCase() === "k") {
+      if (!event.altKey || event.ctrlKey || event.metaKey) return;
+      if (event.key.toLowerCase() === "s") {
+        event.preventDefault();
+        searchRef.current?.focus();
+        searchRef.current?.select();
+      } else if (event.key.toLowerCase() === "k") {
         event.preventDefault();
         ui.setPalette(true);
       }
@@ -115,8 +121,9 @@ export default function App() {
         <span className="topbar-divider" aria-hidden="true" />
         <div className="search">
           <IconSearch size={14} />
-          <input aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
-          <button type="button" className="search-hotkey" title="Open command palette" onClick={() => ui.setPalette(true)}>
+          <input ref={searchRef} aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
+          <kbd className="search-focus-hotkey" title="Focus search">{SEARCH_HOTKEY}</kbd>
+          <button type="button" className="search-hotkey" aria-label="Open command palette" title={`Open command palette (${PALETTE_HOTKEY})`} onClick={() => ui.setPalette(true)}>
             <kbd>{PALETTE_HOTKEY}</kbd>
           </button>
         </div>

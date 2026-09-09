@@ -13,7 +13,7 @@ import { SubtasksPanel } from "../../components/SubtasksPanel";
 import { TYPE_SPECS } from "../../lib/documentTypes";
 import { wordCount } from "../../lib/wordCount";
 import { native } from "../../lib/native";
-import { IconArrowLeft, IconCheck, IconCopy, IconPencilLine, IconMarkdown } from "../../components/icons";
+import { IconArrowLeft, IconCheck, IconCopy, IconPencilLine, IconMarkdown, IconTrash } from "../../components/icons";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
 
 export function FullScreenEditor({ id }: { id: string }) {
@@ -100,9 +100,10 @@ export function FullScreenEditor({ id }: { id: string }) {
         <>
           <div className="fs-body">
             {(spec?.longForm || full.cover) && (
-              <div className="note-cover">
+              <div className={`note-cover${full.cover ? " has-cover" : ""}`}>
                 {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
                 <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
+                {full.cover && <button type="button" className="icon-btn note-cover-remove" aria-label="Remove cover image" title="Remove cover image" onClick={(event) => { event.stopPropagation(); setFull({ ...full, cover: undefined }); ui.showToast({ message: "Cover image removed" }); }}><IconTrash size={15} /></button>}
               </div>
             )}
             <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />

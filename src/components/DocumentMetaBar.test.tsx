@@ -85,6 +85,17 @@ describe("DocumentMetaBar shows only the fields its type carries", () => {
   });
 });
 
+describe("DocumentMetaBar compact metadata", () => {
+  it("puts primary state in editable chips and keeps empty reminders as an action", () => {
+    mount("task", {}, () => {});
+    expect(screen.getByText("Due date")).toBeTruthy();
+    expect(screen.getByText("Tags")).toBeTruthy();
+    expect(screen.getByRole("group", { name: "Primary properties" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Choose reminder" }).textContent).toContain("Add reminder");
+    expect(screen.queryByText("No reminder")).toBeNull();
+  });
+});
+
 describe("the type pill", () => {
   it("appears only when conversion is offered", () => {
     mount("note");

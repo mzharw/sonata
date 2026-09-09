@@ -108,7 +108,7 @@ export function FilterMenu() {
           </nav>
           {tags.data && tags.data.length > 0 && (
             <>
-              <p className="eyebrow">TAGS <small>match all</small></p>
+              <p className="eyebrow">TAGS</p>
               <nav>
                 {tags.data.map(({ tag }) => {
                   const selected = filters.tags?.includes(tag) ?? false;

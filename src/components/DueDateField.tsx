@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState, type UIEvent } from "react";
 import { createPortal } from "react-dom";
 import { IconCalendar, IconChevronLeft, IconChevronRight, IconX } from "./icons";
+import { Tooltip } from "./Tooltip";
 import type { ComponentType } from "react";
 import { formatDateTime, joinDateTime, splitDateTime } from "../lib/dateTime";
 
@@ -165,10 +166,17 @@ export function DueDateField({
       close();
     };
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+      if (e.key === "Escape") {
+        // The picker is portalled, but its trigger still lives inside the document list.
+        // Consume Escape in capture phase so it closes this layer before the list can close
+        // the expanded document beneath it.
+        e.preventDefault();
+        e.stopPropagation();
+        close();
+      }
     };
     document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
+    document.addEventListener("keydown", onKeyDown, true);
     // The time picker has scrollable hour/minute grids. Only a scroll outside this
     // popover means its anchor may have moved; scrolling a grid is an interaction.
     const onScroll = (e: Event) => {
@@ -179,7 +187,7 @@ export function DueDateField({
     window.addEventListener("resize", close);
     return () => {
       document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
+      document.removeEventListener("keydown", onKeyDown, true);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", close);
     };
@@ -234,9 +242,9 @@ export function DueDateField({
         <span>{formatDateTime(value) || placeholder}</span>
       </button>
       {value && (
-        <button type="button" className="icon-btn" aria-label={`Clear ${label}`} title={`Clear ${label}`} onMouseDown={(e) => e.preventDefault()} onClick={() => onChange("")}>
+        <Tooltip content={`Clear ${label}`}><button type="button" className="icon-btn" aria-label={`Clear ${label}`} onMouseDown={(e) => e.preventDefault()} onClick={() => onChange("")}>
           <IconX size={11} />
-        </button>
+        </button></Tooltip>
       )}
       {open && placement &&
         createPortal(
@@ -274,7 +282,7 @@ export function DueDateField({
                 <div className="custom-time-picker" role="group" aria-label={`Time picker for ${label}`}>
                   <div className="custom-time-picker-toolbar">
                     <output aria-label={`Time for ${label}`}>{timePart || "00:00"}</output>
-                    {timePart && <button type="button" className="icon-btn" aria-label="Clear time" title="Clear time" onClick={clearTime}><IconX size={11} /></button>}
+                    {timePart && <Tooltip content="Clear time"><button type="button" className="icon-btn" aria-label="Clear time" onClick={clearTime}><IconX size={11} /></button></Tooltip>}
                   </div>
                   <div className="custom-time-picker-column">
                     <strong>Hour</strong>

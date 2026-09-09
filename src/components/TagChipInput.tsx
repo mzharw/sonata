@@ -27,7 +27,7 @@ export function TagChipInput({ value, onChange, placeholder, "aria-label": ariaL
   const remove = (tag: string) => onChange(value.filter((t) => t !== tag));
 
   return (
-    <div className={`chip-input${focused ? " focused" : ""}`}>
+    <div className={`chip-input${value.length ? " has-tags" : ""}${focused ? " focused" : ""}`}>
       {value.map((tag) => (
         <span className="chip" key={tag}>
           #{tag}
@@ -37,7 +37,7 @@ export function TagChipInput({ value, onChange, placeholder, "aria-label": ariaL
       <div className="chip-input-field">
         <input
           aria-label={ariaLabel ?? "Tags"}
-          placeholder={value.length === 0 ? (placeholder ?? "Add tags…") : undefined}
+          placeholder={text === "" ? (placeholder ?? "+ Tag") : undefined}
           value={text}
           onFocus={() => setFocused(true)}
           onChange={(e) => {
@@ -61,6 +61,8 @@ export function TagChipInput({ value, onChange, placeholder, "aria-label": ariaL
               e.preventDefault();
               setHighlight((i) => Math.max(i - 1, 0));
             } else if (e.key === "Escape") {
+              e.preventDefault();
+              e.stopPropagation();
               setText("");
             } else if (e.key === "Backspace" && text === "" && value.length > 0) {
               remove(value[value.length - 1]);

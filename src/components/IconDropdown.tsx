@@ -79,6 +79,7 @@ export function IconDropdown({
               commit(options[highlight].value);
             } else if (e.key === "Escape") {
               e.preventDefault();
+              e.stopPropagation();
               setOpen(false);
             }
           }

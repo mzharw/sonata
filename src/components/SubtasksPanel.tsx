@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { native } from "../lib/native";
 import type { DocumentSummary } from "../types/domain";
-import { IconChevronRight, IconStatusDone, IconStatusProgress, IconStatusTodo } from "./icons";
+import { IconChevronRight, IconPlus, IconStatusDone, IconStatusProgress, IconStatusTodo } from "./icons";
 
 function statusIcon(status: DocumentSummary["status"]) {
   if (status === "completed") return IconStatusDone;
@@ -10,7 +10,7 @@ function statusIcon(status: DocumentSummary["status"]) {
 }
 
 /** A task's children are stored on the child; this makes their individual state visible in the parent's detail view. */
-export function SubtasksPanel({ id, onOpen }: { id: string; onOpen: (id: string) => void }) {
+export function SubtasksPanel({ id, onOpen, onAdd }: { id: string; onOpen: (id: string) => void; onAdd?: () => void }) {
   const children = useQuery({ queryKey: ["children", id], queryFn: () => native.children(id) });
   const items = children.data ?? [];
   const complete = items.filter((child) => child.status === "completed").length;
@@ -39,6 +39,7 @@ export function SubtasksPanel({ id, onOpen }: { id: string; onOpen: (id: string)
             </li>
           );
         })}
+        {onAdd && <li className="subtasks-add"><button type="button" onClick={onAdd}><IconPlus size={15} /> Add subtask</button></li>}
       </ul>
     </section>
   );

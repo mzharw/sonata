@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { IconLink, IconExternalLink, IconX } from "./icons";
 import { normalizeUrl } from "../lib/url";
+import { Tooltip } from "./Tooltip";
 
 /**
  * A bookmark's link. Shaped like `DueDateField`'s trigger row (icon, value, clear) but a
@@ -43,28 +44,26 @@ export function UrlField({
         }}
       />
       {value && onOpen && (
-        <button
+        <Tooltip content="Open link in browser"><button
           type="button"
           className="icon-btn"
           aria-label="Open link in browser"
-          title="Open link in browser"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onOpen(normalizeUrl(value))}
         >
           <IconExternalLink size={12} />
-        </button>
+        </button></Tooltip>
       )}
       {value && (
-        <button
+        <Tooltip content="Clear link"><button
           type="button"
           className="icon-btn"
           aria-label="Clear link"
-          title="Clear link"
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => onChange("")}
         >
           <IconX size={11} />
-        </button>
+        </button></Tooltip>
       )}
     </div>
   );

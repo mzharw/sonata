@@ -24,9 +24,11 @@ button:hover,button.active{background:var(--hover)}
 .filter-menu{position:relative;flex:none}
 .search{display:flex;gap:6px;align-items:center;background:var(--chip-bg);border-radius:8px;padding:6px 8px;color:var(--muted);min-width:0;flex:1}
 .search input{flex:1;min-width:60px;border:0;outline:0;background:none;font:inherit;color:inherit}
-.search-hotkey{flex:none;padding:0;color:var(--muted-soft)}
+.search-focus-hotkey,.search-hotkey{flex:none;color:var(--muted-soft)}
+.search-hotkey{padding:0}
 .search-hotkey:hover{color:var(--text);background:none}
-.search-hotkey kbd{font:10px/1 ui-monospace,SFMono-Regular,monospace;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px}
+.search-focus-hotkey,.search-hotkey kbd{font:10px/1 ui-monospace,SFMono-Regular,monospace;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:4px 6px}
+.search-focus-hotkey{margin-left:auto}
 nav,.tags{display:grid;gap:2px}
 nav button{font-size:14px}
 .eyebrow{font-size:10px;letter-spacing:1.1px;color:var(--muted);margin:11px 7px 2px;font-weight:700}
@@ -183,6 +185,9 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .doc.is-active::before{content:"";position:absolute;left:0;top:7px;bottom:14px;width:2px;border-radius:0 2px 2px 0;background:var(--type-color,var(--accent));opacity:.5}
 .doc.is-active.expanded::before,.doc.is-active.previewing::before{display:none}
 .doc.expanded .doc-row,.doc.expanded .doc-row:hover,.doc.previewing .doc-row,.doc.previewing .doc-row:hover{background:transparent}
+/* The expanded editor repeats these fields in its metadata controls, so leave the
+   compact row summary for browsing and let the open detail speak for itself. */
+.doc.expanded .doc-main small{display:none}
 /* The marker tells the row when its normal position has crossed the list
    scrollport. That scrollport begins directly under the tag chips, or under
    the top bar when the chips are absent, so a docked title never overlaps
@@ -201,19 +206,36 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .doc-main b{display:block;font-size:14px;font-weight:540;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .doc-main b.is-completed{color:var(--muted);font-weight:500;text-decoration:line-through}
 .attention-inline{align-self:flex-start;color:var(--danger);font-size:11px;font-weight:700}
-.doc-main small{display:flex;flex-wrap:wrap;align-items:center;gap:5px;margin-top:4px;color:var(--muted);font-size:12px}
+.doc-main small{display:flex;flex-wrap:wrap;align-items:center;column-gap:5px;row-gap:11px;width:100%;margin-top:5px;color:var(--muted);font-size:12px}
 .tag-inline{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);border-radius:5px;padding:1px 5px;font-size:11px;white-space:nowrap}
 @media(prefers-color-scheme:dark){.tag-inline{color:#9fc4ab}}
 .tag-inline.more{color:var(--muted-soft);background:none;padding:1px 0}
-.due-inline{white-space:nowrap;color:var(--muted-soft)}
+.due-inline{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;color:var(--muted-soft)}
 .due-inline.overdue{color:var(--danger);font-weight:600}
-.progress-inline{white-space:nowrap;color:var(--muted-soft);font-variant-numeric:tabular-nums}
+.reminder-inline{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;color:var(--muted-soft)}
+.tooltip-anchor{position:relative;display:inline-flex;align-items:center}
+.tooltip{position:absolute;z-index:55;bottom:calc(100% + 7px);left:50%;width:max-content;max-width:min(260px,calc(100vw - 24px));padding:5px 7px;border:1px solid var(--border-strong);border-radius:6px;background:var(--text);color:var(--bg);box-shadow:0 5px 14px #0002;font-size:11px;font-weight:500;line-height:1.25;opacity:0;pointer-events:none;transform:translate(-50%,2px);transition:opacity .12s ease,transform .12s ease}
+.tooltip-anchor:hover .tooltip,.tooltip-anchor:focus-within .tooltip{opacity:1;transform:translate(-50%,0)}
+.title-tooltip-provider{display:contents}
+.global-tooltip{bottom:auto;transform:translate(-50%,-100%);opacity:1;transition:none}
+.global-tooltip.below{transform:translate(-50%,0)}
+.progress-inline{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;color:var(--muted-soft);font-variant-numeric:tabular-nums}
 .progress-inline.done{color:var(--check)}
+.progress-inline-track{width:28px;height:4px;overflow:hidden;border-radius:999px;background:var(--border)}
+.progress-inline-track i{display:block;height:100%;border-radius:inherit;background:var(--check)}
+/* Tags and dates describe the title; priority is a trailing signal. A single scheduled
+   chip gets a visual separation, while a due date plus reminder keep priority compact. */
 .priority-inline{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;font-size:11px;font-weight:600;text-transform:capitalize}
+.priority-inline.separated{margin-left:auto;padding-left:8px;border-left:1px solid color-mix(in srgb,var(--border) 75%,transparent)}
 .priority-inline.priority-low{color:var(--priority-low)}
 .priority-inline.priority-medium{color:var(--priority-medium)}
 .priority-inline.priority-high{color:var(--priority-high)}
 .priority-inline.priority-urgent{color:var(--priority-urgent)}
+@media(max-width:360px){.priority-inline.separated{margin-left:0;padding-left:0;border-left:0}}
+.updated-inline{white-space:nowrap;color:var(--muted-soft);font-variant-numeric:tabular-nums}
+/* A timestamp is supporting context for note tags, not another tag. Separate it
+   only when both are present so an untagged note still reads naturally. */
+.tag-inline+.updated-inline{margin-left:2px;padding-left:7px;border-left:1px solid color-mix(in srgb,var(--border) 70%,transparent)}
 .status-inline{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;font-size:11px;font-weight:600}
 .status-inline.status-in_progress{color:var(--status-progress)}
 .status-inline.status-completed{color:var(--check)}
@@ -260,33 +282,77 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .editor-title-pen{position:absolute;right:2px;opacity:0;pointer-events:none;color:var(--muted-soft);transition:opacity .12s}
 .editor-title-wrap:hover .editor-title-pen,.fs-title-wrap:hover .editor-title-pen{opacity:1}
 .editor-title-wrap:focus-within .editor-title-pen,.fs-title-wrap:focus-within .editor-title-pen{opacity:0}
-.note-cover{position:relative;display:grid;place-items:center;width:100%;height:96px;overflow:hidden;border:1px dashed var(--border-strong);border-radius:0 0 9px 9px;margin:0 0 14px;background:var(--hover)}
+.note-cover{position:relative;display:grid;place-items:center;width:100%;height:96px;overflow:hidden;border:1px dashed var(--border-strong);border-radius:0 0 9px 9px;margin:0 0 14px;background:var(--hover);transition:background .15s,border-color .15s}
+.note-cover:not(.has-cover):hover,.note-cover:not(.has-cover):focus-within{border-color:var(--focus-ring)}
 .editor .note-cover{width:calc(100% + 40px);margin:-14px 0 14px -20px}
 .editor .note-cover{border-radius:0}
 .editor .note-cover + .editor-title-wrap{position:relative;margin:-10px -20px 16px;padding:14px 20px 0;border-radius:12px 12px 0 0;background:var(--bg-alt)}
 .note-cover img{width:100%;height:100%;object-fit:cover}
-.note-cover-attach{position:absolute;inset:0;margin:auto;width:32px;height:32px;color:var(--muted-soft);background:color-mix(in srgb,var(--bg) 82%,transparent);border-radius:999px;opacity:0;transition:opacity .12s,background .12s}
-.note-cover:hover .note-cover-attach,.note-cover:focus-within .note-cover-attach{opacity:1;background:var(--bg)}
-/* Status, priority, due date and tags on one line of pills. Each control
-   already states its own empty value, so no field labels are needed. */
-.meta-bar{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;margin-bottom:12px}
-.meta-bar .icon-dropdown-trigger,.meta-bar .date-picker-trigger{gap:5px;padding:4px 10px;border-radius:999px;background:var(--bg-alt);font-size:12px}
-.meta-bar .icon-dropdown-trigger:hover,.meta-bar .date-picker-trigger:hover{background:var(--hover)}
+.note-cover-attach{position:absolute;inset:0;z-index:1;display:flex;flex-direction:column;justify-content:center;gap:6px;width:auto;height:auto;margin:0;border-radius:0;color:var(--muted);background:transparent;font-size:12px;font-weight:600;text-align:center;opacity:0;transition:opacity .12s,color .12s}
+.note-cover:hover .note-cover-attach,.note-cover:focus-within .note-cover-attach{opacity:1}
+.note-cover-attach:hover,.note-cover-attach:focus-visible{background:transparent;color:var(--text);opacity:1}
+.note-cover.has-cover .note-cover-attach{color:var(--surface);opacity:0}
+.note-cover.has-cover:hover .note-cover-attach,.note-cover.has-cover:focus-within .note-cover-attach{opacity:1;background:color-mix(in srgb,#000 38%,transparent)}
+.note-cover-remove{position:absolute;top:8px;right:8px;z-index:2;color:var(--surface);background:color-mix(in srgb,#000 48%,transparent);opacity:0;transition:opacity .12s,background .12s}
+.note-cover:hover .note-cover-remove,.note-cover:focus-within .note-cover-remove{opacity:1}
+.note-cover-remove:hover,.note-cover-remove:focus-visible{background:var(--danger);color:var(--accent-contrast)}
+/* Primary state is visible at a glance. Supporting fields use a small two-column grid. */
+.meta-bar{display:flex;flex-direction:column;gap:12px;min-width:0;margin-bottom:20px}
+.meta-chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.meta-chip{display:flex}
+.meta-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:20px;min-width:0;padding-top:12px;border-top:1px solid var(--border-strong)}
+.meta-detail-column{display:flex;flex-direction:column;align-items:stretch;gap:12px;min-width:0}
+.meta-details-link{grid-template-columns:minmax(0,1fr)}
+.meta-field{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
+.meta-field-label{color:var(--muted-soft);font-size:10px;font-weight:700;letter-spacing:.3px;line-height:1.2;text-transform:uppercase}
+.meta-field-control{display:flex;align-items:center;min-width:0}
+.meta-field-tags .meta-field-control,.meta-field-url .meta-field-control{width:100%}
+.meta-bar .icon-dropdown,.meta-bar .date-picker{min-width:0}
+.meta-chips .icon-dropdown-trigger{gap:5px;padding:5px 10px;border:1px solid var(--border);border-radius:999px;background:var(--surface);font-size:12px}
+.meta-chips .type-dropdown .icon-dropdown-trigger{color:var(--type-color);border-color:color-mix(in srgb,var(--type-color) 45%,var(--border));background:color-mix(in srgb,var(--type-color) 11%,var(--surface));font-weight:600}
+.meta-chips .status-dropdown .icon-dropdown-trigger{border-color:color-mix(in srgb,currentColor 45%,var(--border));background:color-mix(in srgb,currentColor 9%,var(--surface))}
+.meta-chips .priority-dropdown .icon-dropdown-trigger{border-color:color-mix(in srgb,currentColor 30%,var(--border))}
+.meta-chips .icon-dropdown-trigger:hover{background:var(--hover)}
+.meta-details .date-picker-trigger{justify-content:flex-start;gap:5px;padding:3px 4px;border:1px solid transparent;border-radius:6px;background:transparent;font-size:13px}
+.meta-details .date-picker-trigger:hover{background:var(--bg-alt)}
 .meta-bar .icon-dropdown-chevron{margin-left:-1px}
 .meta-bar .date-picker .icon-btn{padding:3px}
-/* Tags take the rest of the line, then wrap to their own once the pills fill it. */
-.meta-bar .chip-input{flex:1 1 150px;min-width:0;max-width:100%;gap:4px;padding:3px 7px;border-radius:999px;background:var(--bg-alt)}
+/* Tags are a compact editable field; the always-visible + Tag placeholder is discoverable
+   without a separate edit mode. */
+.meta-bar .chip-input{flex:1;min-width:0;max-width:100%;gap:4px;padding:3px 5px;border:1px solid transparent;border-radius:6px;background:transparent}
 .meta-bar .chip-input .chip{font-size:11.5px;padding:1px 3px 1px 7px}
 .meta-bar .chip-input input{font-size:12px}
-.meta-bar .type-dropdown .icon-dropdown-trigger{color:var(--type-color);background:color-mix(in srgb,var(--type-color) 12%,transparent);font-weight:600}
-.meta-bar .type-dropdown .icon-dropdown-trigger:hover{background:color-mix(in srgb,var(--type-color) 20%,transparent)}
-.url-field{display:flex;align-items:center;gap:4px;flex:1 1 200px;min-width:180px;padding:3px 9px;border-radius:999px;background:var(--bg-alt);color:var(--muted)}
+/* An empty field always advertises its next action. Once tags exist, it stays quiet until
+   intentionally inspected, then exposes the same action without taking permanent space. */
+.meta-bar .chip-input input::placeholder{color:transparent}
+.meta-bar .chip-input:not(.has-tags) input::placeholder,.meta-bar .chip-input:hover input::placeholder,.meta-bar .chip-input:focus-within input::placeholder{color:var(--muted-soft)}
+.url-field{display:flex;align-items:center;gap:4px;flex:1;min-width:0;padding:3px 5px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--muted)}
 .url-field.has-value{color:var(--type-bookmark)}
 .url-field input{flex:1;min-width:0;border:0;outline:0;background:none;font:inherit;font-size:12px;color:var(--text)}
 .url-field .icon-btn{padding:3px}
 .related-documents{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:-6px 0 12px;color:var(--muted);font-size:12px}.related-documents-label{display:inline-flex;align-items:center;gap:4px;font-weight:600;color:var(--muted-soft)}.document-picker{position:relative}.document-picker-trigger,.related-document-chip{display:inline-flex;align-items:center;gap:5px;max-width:190px;overflow:hidden;border:1px solid var(--border);border-radius:999px;padding:4px 8px;background:var(--bg-alt);font-size:12px;color:var(--text)}.document-picker-trigger{color:var(--muted)}.document-picker-trigger:hover{border-color:var(--border-strong);background:var(--hover);color:var(--text)}.related-document-chip{background:color-mix(in srgb,var(--chip-bg) 82%,var(--type-note) 4%)}.related-document-chip span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.related-document-chip svg{flex:none;color:var(--muted-soft)}.related-document-chip:hover{background:var(--hover);color:var(--danger)}.document-picker-popover{position:fixed;z-index:45;width:min(300px,calc(100vw - 24px));max-height:calc(100vh - 24px);overflow:hidden;border:1px solid var(--border-strong);border-radius:10px;background:var(--surface);box-shadow:var(--shadow)}.document-picker-search{display:flex;align-items:center;gap:7px;padding:8px;border-bottom:1px solid var(--border);color:var(--muted)}.document-picker-search input{width:100%;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-size:12px}.document-picker-results{max-height:min(220px,calc(100vh - 100px));overflow:auto;padding:4px}.document-picker-results button{display:flex;flex-direction:column;align-items:flex-start;width:100%;gap:2px;padding:7px 8px;border-radius:7px;color:var(--text);text-align:left;font-size:12px}.document-picker-results button:hover{background:var(--hover)}.document-picker-results button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.document-picker-results small{color:var(--muted-soft);font-size:10.5px}.document-picker-results p{margin:10px 8px;color:var(--muted);font-size:12px}
 .subtasks-panel{margin:0 0 14px;padding:10px;border:1px solid var(--border);border-radius:10px;background:color-mix(in srgb,var(--bg-alt) 55%,transparent)}.subtasks-panel header{display:block;margin-bottom:7px}.subtasks-panel header>div:first-child{display:flex;align-items:baseline;justify-content:space-between;gap:8px}.subtasks-panel header span{font-size:11px;font-weight:700;letter-spacing:.35px;text-transform:uppercase;color:var(--muted-soft)}.subtasks-panel header strong{font-size:11px;color:var(--muted)}.subtasks-panel header small{display:block;margin-top:6px;color:var(--muted-soft);font-size:10.5px}.subtasks-progress{height:4px;margin-top:7px;overflow:hidden;border-radius:99px;background:var(--border)}.subtasks-progress i{display:block;height:100%;border-radius:inherit;background:var(--check);transition:width .18s ease}.subtasks-panel ul{display:grid;gap:2px;margin:0;padding:0;list-style:none}.subtasks-panel li button{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;align-items:center;gap:7px;width:100%;padding:6px;border-radius:6px;color:var(--muted);text-align:left;font-size:12.5px}.subtasks-panel li button:hover{background:var(--hover);color:var(--text)}.subtasks-panel li button>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.subtasks-panel li button>svg:first-child{color:var(--check)}.subtasks-panel li small{font-size:10.5px;color:var(--muted-soft)}
-@media(max-width:420px){.meta-bar{align-items:stretch}.meta-bar .icon-dropdown,.meta-bar .date-picker{flex:1 1 auto}.meta-bar .chip-input,.url-field{flex-basis:100%}.meta-bar .icon-dropdown-trigger,.meta-bar .date-picker-trigger{width:100%;justify-content:center}}
+/* Focus, not an idle fill, carries the affordance for secondary fields. */
+.meta-details .icon-dropdown-trigger,.meta-details .date-picker-trigger,.meta-bar .chip-input{border-color:transparent}
+.meta-details .icon-dropdown-trigger:focus-visible,.meta-details .date-picker-trigger:focus-visible,.meta-bar .chip-input:focus-within{outline:2px solid var(--focus-ring);outline-offset:1px;border-color:transparent;background:var(--bg-alt)}
+/* Related documents stay as chips; adding another is a contextual action after them. */
+.related-documents{margin:8px 0 14px;padding:12px 0 0;border-top:1px solid var(--border-strong);background:transparent;gap:5px 8px}
+.related-documents.has-links{margin-top:16px}
+.related-documents .document-picker-trigger{padding:3px 4px;border:1px solid transparent;background:transparent;color:var(--type-note)}
+.related-documents .document-picker-trigger:hover{background:color-mix(in srgb,var(--type-note) 8%,var(--bg-alt))}
+.related-documents .related-document-chip{background:var(--bg-alt)}
+.related-documents.has-links .document-picker{opacity:0;transition:opacity .12s}
+.related-documents.has-links:hover .document-picker,.related-documents.has-links:focus-within .document-picker{opacity:1}
+/* Progress remains structured, but no longer reads as a card inside the editor card. */
+.subtasks-panel{margin:8px 0 14px;padding:12px 0 0;border:0;border-top:1px solid var(--border-strong);border-radius:0;background:transparent}
+.subtasks-panel header{margin-bottom:6px}
+.subtasks-panel header small{display:none}
+.subtasks-panel ul{gap:0}
+.subtasks-panel li button{padding:6px 4px;border-radius:5px}
+.subtasks-progress{height:5px}
+.subtasks-panel li .is-completed{color:var(--muted);text-decoration:line-through}
+.subtasks-panel .subtasks-add button{color:var(--muted);padding-top:8px}.subtasks-panel .subtasks-add button:hover{color:var(--text)}
+@media(max-width:420px){.meta-details{gap:10px 12px}.meta-chips{gap:6px}.meta-chips .icon-dropdown-trigger{padding:5px 8px}}
 .editor-wordcount{color:var(--muted-soft)}
 .backlinks{margin-top:14px;padding-top:10px;border-top:1px solid var(--border-strong)}
 .backlinks-eyebrow{display:block;margin-bottom:4px;font-size:10px;font-weight:700;letter-spacing:.3px;text-transform:uppercase;color:var(--muted-soft)}

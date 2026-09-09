@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { isTauri } from "@tauri-apps/api/core";
 import { ResizeHandle } from "./components/ResizeHandle";
+import { TitleTooltipProvider } from "./components/Tooltip";
 import App from "./app/App";
 import { WorkspaceGate } from "./app/WorkspaceGate";
 import "./styles/index.css";
@@ -34,9 +35,11 @@ const BlockWebViewShortcuts = () => {
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <QueryClientProvider client={new QueryClient()}>
-      {isTauri() && <ResizeHandle />}
-      {isTauri() && <BlockWebViewShortcuts />}
-      <WorkspaceGate><App /></WorkspaceGate>
+      <TitleTooltipProvider>
+        {isTauri() && <ResizeHandle />}
+        {isTauri() && <BlockWebViewShortcuts />}
+        <WorkspaceGate><App /></WorkspaceGate>
+      </TitleTooltipProvider>
     </QueryClientProvider>
   </StrictMode>,
 );

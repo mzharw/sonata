@@ -7,7 +7,7 @@ import type { DocumentType, SonataDocument } from "../types/domain";
 /** A control `DocumentMetaBar` and the Quick Add form can render for a type. */
 export type MetaField = "status" | "priority" | "due" | "reminder" | "stage" | "url" | "tags";
 /** A chip `DocumentRow` can render in its meta line. */
-export type RowChip = "status" | "stage" | "domain" | "tags" | "due" | "progress" | "priority";
+export type RowChip = "status" | "stage" | "domain" | "tags" | "due" | "reminder" | "progress" | "priority" | "updated";
 
 export interface TypeSpec {
   /** Repeated inside the entry so a spec can be passed around without its key. */
@@ -78,7 +78,7 @@ const SPECS = {
     keywords: ["task", "todo"],
     capturePrefix: "task ",
     meta: ["status", "priority", "due", "reminder", "tags"],
-    rowChips: ["status", "tags", "due", "progress", "priority"],
+    rowChips: ["status", "tags", "due", "reminder", "progress", "priority"],
     affordance: "checkbox",
     longForm: false,
     ownsStatusViews: true,
@@ -95,7 +95,9 @@ const SPECS = {
     keywords: ["note"],
     capturePrefix: "note ",
     meta: ["tags"],
-    rowChips: ["tags"],
+    // A note's only persisted metadata is tags, but its modification time is useful
+    // browse context and is already available on every indexed summary.
+    rowChips: ["tags", "updated"],
     affordance: "icon",
     longForm: true,
     ownsStatusViews: false,

@@ -4,7 +4,8 @@ import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDismiss } from "../hooks/useDismiss";
 import { native } from "../lib/native";
 import type { SonataDocument } from "../types/domain";
-import { IconLink, IconSearch, IconX } from "./icons";
+import { IconPlus, IconSearch, IconX } from "./icons";
+import { Tooltip } from "./Tooltip";
 
 /** Editable, ID-backed metadata links. IDs keep relationships intact when a title changes. */
 export function RelatedDocuments({ doc, onChange }: { doc: SonataDocument; onChange: (doc: SonataDocument) => void }) {
@@ -36,11 +37,14 @@ export function RelatedDocuments({ doc, onChange }: { doc: SonataDocument; onCha
   }, [open]);
 
   return (
-    <div className="related-documents">
-      <span className="related-documents-label"><IconLink size={13} /> Related</span>
+    <div className={`related-documents${linked.length ? " has-links" : ""}`}>
+      {linked.map((id) => {
+        const title = documents.data?.find((candidate) => candidate.id === id)?.title ?? id;
+        return <Tooltip key={id} content={`Remove ${title} from related documents`}><button className="related-document-chip" type="button" onClick={() => onChange({ ...doc, links: linked.filter((value) => value !== id) })}><span>{title}</span><IconX size={12} /></button></Tooltip>;
+      })}
       <div className="document-picker" ref={pickerRef}>
         <button type="button" className="document-picker-trigger" aria-label="Add related document" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
-          <IconLink size={13} /> Add document
+          <IconPlus size={13} /> Add related document
         </button>
         {open && createPortal(
           <div ref={popoverRef} className="document-picker-popover" role="dialog" aria-label="Add related document" style={position}>
@@ -56,10 +60,6 @@ export function RelatedDocuments({ doc, onChange }: { doc: SonataDocument; onCha
           </div>
         , document.body)}
       </div>
-      {linked.map((id) => {
-        const title = documents.data?.find((candidate) => candidate.id === id)?.title ?? id;
-        return <button key={id} className="related-document-chip" type="button" title={`Remove ${title} from related documents`} onClick={() => onChange({ ...doc, links: linked.filter((value) => value !== id) })}><span>{title}</span><IconX size={12} /></button>;
-      })}
     </div>
   );
 }

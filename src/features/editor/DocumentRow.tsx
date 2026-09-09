@@ -8,6 +8,7 @@ import { StatusSelect } from "../../components/StatusSelect";
 import { DocumentMetaBar } from "../../components/DocumentMetaBar";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/MarkdownEditor";
 import { AttachmentButton } from "../../components/AttachmentButton";
+import { Tooltip } from "../../components/Tooltip";
 import { attachToDocument, chooseAndImportAttachment, importClipboardImage } from "../../lib/attachments";
 import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
 import { TYPE_SPECS, type RowChip } from "../../lib/documentTypes";
@@ -21,8 +22,9 @@ import { stageLabel } from "../../lib/stageOptions";
 import { urlDomain } from "../../lib/url";
 import { wordCount } from "../../lib/wordCount";
 import { renderMarkdownPreview } from "../../lib/renderMarkdown";
+import { formatDateTime } from "../../lib/dateTime";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
-import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconMaximize, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown, IconLink, IconExternalLink } from "../../components/icons";
+import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconMaximize, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown, IconLink, IconExternalLink, IconCalendar, IconBell } from "../../components/icons";
 import type { TaskStatus } from "../../types/domain";
 import type { DocumentAttention } from "../../lib/attention";
 
@@ -232,6 +234,11 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
             const statusMeta = showStatus ? STATUS_OPTIONS.find((o) => o.value === doc.status) : undefined;
             const StatusIcon = statusMeta?.icon;
             const domain = doc.bookmark?.url ? urlDomain(doc.bookmark.url) : undefined;
+            // A single date is the natural break between descriptive chips and the
+            // trailing priority signal. When both schedule chips are present, keeping
+            // the priority adjacent avoids stranding it on a wrapped line.
+            const hasScheduleMeta = Boolean(doc.due || doc.reminder);
+            const hasFullScheduleMeta = Boolean(doc.due && doc.reminder);
             const chips: Record<RowChip, ReactNode> = {
               status: showStatus ? (
                 <span className={`status-inline status-${doc.status}`}>
@@ -256,18 +263,30 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
               ) : null,
               due: doc.due ? (() => {
                 const { label, overdue } = dueMeta(doc.due, doc.status);
-                return <span className={`due-inline${overdue ? " overdue" : ""}`} title={doc.due}>{label}</span>;
+                return <Tooltip content={`Due ${doc.due}`}><span className={`due-inline${overdue ? " overdue" : ""}`}><IconCalendar size={11} /> {label}</span></Tooltip>;
               })() : null,
+              reminder: doc.reminder ? <Tooltip content={`Reminder ${formatDateTime(doc.reminder)}`}><span className="reminder-inline"><IconBell size={11} /> {formatDateTime(doc.reminder)}</span></Tooltip> : null,
               // Children keep pointing at a converted parent by design, so the count can
               // be non-zero for a type that has no subtasks — the spec decides, not the count.
               progress: doc.childCount > 0 ? (
-                <span className={`progress-inline${doc.completedChildCount === doc.childCount ? " done" : ""}`}>{doc.completedChildCount}/{doc.childCount}</span>
+                <span className={`progress-inline${doc.completedChildCount === doc.childCount ? " done" : ""}`} title={`${doc.completedChildCount} of ${doc.childCount} subtasks complete`}>
+                  <span className="progress-inline-track" aria-hidden="true"><i style={{ width: `${(doc.completedChildCount / doc.childCount) * 100}%` }} /></span>
+                  {doc.completedChildCount}/{doc.childCount}
+                </span>
               ) : null,
               priority: doc.priority && doc.priority !== "none" ? (
-                <span className={`priority-inline priority-${doc.priority}`}>
+                <span className={`priority-inline${hasScheduleMeta && !hasFullScheduleMeta ? " separated" : ""} priority-${doc.priority}`}>
                   <IconFlag size={11} fill="currentColor" /> {doc.priority}
                 </span>
               ) : null,
+              updated: (() => {
+                const label = relativeTime(doc.updated);
+                return label ? (
+                  <span className="updated-inline" title={exactTimestamp(doc.updated) || undefined}>
+                    Edited {label}
+                  </span>
+                ) : null;
+              })(),
             };
             const visible = spec.rowChips.filter((chip) => chips[chip] !== null);
             if (visible.length === 0) return null;
@@ -383,11 +402,24 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           {preview.data?.body.trim() && <div className="md-prose" onClick={(event) => {
             const target = event.target;
             if (!(target instanceof Element)) return;
-            const path = target.closest("a")?.getAttribute("href");
-            if (!path?.match(/^attachments\/[A-Za-z0-9_./-]+$/)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            revealAttachment(path);
+            const href = target.closest("a")?.getAttribute("href");
+            if (!href) return;
+            const attachmentPath = href.match(/^attachments\/[A-Za-z0-9_./-]+$/)?.[0];
+            const documentId = href.match(/^https:\/\/sonata\.invalid\/document\/([0-9A-HJKMNP-TV-Z]{26})$/i)?.[1];
+            if (attachmentPath) {
+              event.preventDefault();
+              event.stopPropagation();
+              revealAttachment(attachmentPath);
+            } else if (documentId) {
+              event.preventDefault();
+              event.stopPropagation();
+              cancelPreview();
+              ui.expand(documentId);
+            } else if (/^(https?:|mailto:)/i.test(href)) {
+              event.preventDefault();
+              event.stopPropagation();
+              void native.openExternal(href);
+            }
           }} dangerouslySetInnerHTML={{ __html: renderMarkdownPreview(preview.data.body, 500, attachmentUrls) }} />}
         </div>
       )}
@@ -395,9 +427,10 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
       {expanded && full && (
         <article className="editor">
           {(spec.longForm || full.cover) && (
-            <div className="note-cover">
+            <div className={`note-cover${full.cover ? " has-cover" : ""}`}>
               {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
               <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
+              {full.cover && <button type="button" className="icon-btn note-cover-remove" aria-label="Remove cover image" title="Remove cover image" onClick={(event) => { event.stopPropagation(); setFull({ ...full, cover: undefined }); ui.showToast({ message: "Cover image removed" }); }}><IconTrash size={15} /></button>}
             </div>
           )}
           <div className="editor-title-wrap">
@@ -406,7 +439,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           </div>
           <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
           <RelatedDocuments doc={full} onChange={setFull} />
-          {full.type === "task" && <SubtasksPanel id={full.id} onOpen={(id) => ui.expand(id)} />}
+          {full.type === "task" && <SubtasksPanel id={full.id} onOpen={(id) => ui.expand(id)} onAdd={() => void createRelated().catch((error) => { console.error("Couldn't create subtask", error); ui.showToast({ message: "Couldn't create subtask" }); })} />}
           <MarkdownEditor
             ref={bodyEditorRef}
             ariaLabel="Note body"

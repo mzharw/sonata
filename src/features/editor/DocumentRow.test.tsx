@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { DocumentRow } from "./DocumentRow";
 import { native } from "../../lib/native";
@@ -17,7 +17,10 @@ beforeEach(() => {
   vi.mocked(native.tags).mockResolvedValue([]);
   vi.mocked(native.backlinks).mockResolvedValue([]);
 });
-afterEach(cleanup);
+afterEach(() => {
+  vi.useRealTimers();
+  cleanup();
+});
 
 const summary = (over: Partial<DocumentSummary> = {}): DocumentSummary => ({
   id: "01ABC",
@@ -101,19 +104,48 @@ describe("the row context menu", () => {
 });
 
 describe("the row's meta chips", () => {
+  it("keeps priority with tags when no due date or reminder is set", () => {
+    mount({ type: "task", tags: ["feature"], priority: "urgent" });
+    expect(screen.getByText("urgent").className).not.toContain("separated");
+  });
+
+  it("separates priority after scheduled metadata", () => {
+    mount({ type: "task", due: "2026-02-01", priority: "urgent" });
+    expect(screen.getByText("urgent").className).toContain("separated");
+  });
+
+  it("keeps priority with the due date and reminder", () => {
+    mount({ type: "task", due: "2026-02-01", reminder: "2026-02-01T09:00", priority: "urgent" });
+    expect(screen.getByText("urgent").className).not.toContain("separated");
+  });
+
+  it("uses styled tooltips for scheduled metadata", () => {
+    mount({ type: "task", due: "2026-02-01", reminder: "2026-02-01T09:00" });
+    expect(screen.getByRole("tooltip", { name: "Due 2026-02-01" })).toBeTruthy();
+    expect(screen.getByRole("tooltip", { name: /Reminder/ })).toBeTruthy();
+    expect(document.querySelector('[title="Due 2026-02-01"]')).toBeNull();
+  });
+
   it("shows a task its progress and due date", () => {
     mount({ type: "task", due: "2026-02-01", childCount: 3, completedChildCount: 1 });
     expect(screen.getByText("1/3")).toBeTruthy();
-    expect(screen.getByTitle("2026-02-01")).toBeTruthy();
+    expect(screen.getByRole("tooltip", { name: "Due 2026-02-01" })).toBeTruthy();
   });
 
   // The chips a row shows are the type's business, so legacy frontmatter on a note stops
-  // advertising fields the note no longer owns.
-  it("shows a note only its tags, even when it still carries a due date", () => {
-    mount({ type: "note", tags: ["work"], due: "2026-02-01", priority: "high" });
+  // advertising fields the note no longer owns. Its indexed edit time is browse context,
+  // rather than persisted note metadata, so it remains available alongside tags.
+  it("shows a note its tags and last edit, but no task metadata", () => {
+    mount({ type: "note", tags: ["work"], updated: new Date().toISOString(), due: "2026-02-01", priority: "high" });
     expect(screen.getByText("#work")).toBeTruthy();
+    expect(screen.getByText("Edited just now")).toBeTruthy();
     expect(screen.queryByTitle("2026-02-01")).toBeNull();
     expect(screen.queryByText(/high/)).toBeNull();
+  });
+
+  it("omits a note's edit label when its timestamp is malformed", () => {
+    mount({ type: "note", updated: "not-a-date" });
+    expect(screen.queryByText(/^Edited /)).toBeNull();
   });
 
   it("shows a bookmark its domain, and offers to open it", () => {
@@ -133,6 +165,21 @@ describe("the row's meta chips", () => {
     // non-zero for a note — the spec decides whether to show it, not the count.
     mount({ type: "note", childCount: 3, completedChildCount: 1 });
     expect(screen.queryByText("1/3")).toBeNull();
+  });
+});
+
+describe("the row hover preview", () => {
+  it("opens a wiki link's referenced document instead of its previewing row", async () => {
+    const targetId = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    vi.mocked(native.readDocument).mockResolvedValue({ ...summary({ type: "note" }), body: `[[Referenced note|${targetId}]]` } as never);
+    mount({ type: "note" });
+
+    fireEvent.mouseEnter(screen.getByText("Sort me out"));
+    await new Promise((resolve) => window.setTimeout(resolve, 500));
+    const link = await waitFor(() => screen.getByRole("link", { name: "Referenced note" }));
+    fireEvent.click(link);
+
+    expect(useUi.getState().expandedId).toBe(targetId);
   });
 });
 

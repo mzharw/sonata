@@ -67,6 +67,9 @@ export function DocumentList({ search }: { search: string }) {
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLUListElement>) => {
+    // A child control that owns Escape (a dropdown, picker, or editor surface) marks the
+    // event handled. The list is the final escape hatch, never the first responder.
+    if (event.defaultPrevented) return;
     if (event.key === "Escape") {
       // Escape unwinds one layer at a time: close the open row first, then drop
       // the selection so the list can sit with no row singled out.
