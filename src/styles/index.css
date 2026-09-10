@@ -101,7 +101,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .view-menu-trigger{font-family:Georgia,serif;font-size:16px;font-weight:500;white-space:nowrap}
 .view-menu-popover{position:absolute;top:calc(100% + 6px);right:0;min-width:220px;max-height:70vh;overflow:auto;padding:12px 10px;background:var(--bg-alt);border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow);z-index:20;display:flex;flex-direction:column;gap:6px}
 
-.quick-add-wrap{border-top:1px solid var(--border-strong);flex:none;box-shadow:0 -6px 16px -12px #0002}
+.quick-add-wrap{position:relative;border-top:1px solid var(--border-strong);flex:none;box-shadow:0 -6px 16px -12px #0002}
 .quick-add{display:flex;gap:8px;padding:14px;background:var(--bg-alt);align-items:center}
 .quick-add-input-wrap{position:relative;display:flex;align-items:center;gap:4px;flex:1;min-width:0;border:1px solid var(--border);background:var(--surface);border-radius:7px;padding:0 8px 0 4px}
 .quick-add-input-wrap:focus-within{outline:2px solid var(--focus-ring);outline-offset:1px}
@@ -118,7 +118,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .quick-add-suggestions small{color:var(--muted-soft);font-size:11px;white-space:nowrap}
 .quick-add-hint{display:flex;align-items:center;gap:4px;flex:none;color:var(--muted-soft);font-size:11px;white-space:nowrap;animation:save-status-pop .15s ease}
 .quick-add-hint kbd{font:10px/1 ui-monospace,SFMono-Regular,monospace;background:var(--chip-bg);border:1px solid var(--border);border-radius:4px;padding:3px 5px;color:var(--muted)}
-.quick-add-hint.idle{opacity:.75}
+.quick-add-bottom-hint{position:absolute;bottom:100%;left:14px;display:flex;justify-content:flex-start;gap:18px;padding:9px 10px;border:1px solid var(--border);border-bottom:0;border-radius:7px 7px 0 0;background:var(--bg-alt);box-shadow:0 -2px 8px #0001;text-align:left;white-space:nowrap;transition:opacity .18s ease,transform .18s ease}.quick-add-bottom-hint kbd{padding:4px 7px;background:#fff;border-color:var(--border-strong);color:#202124;box-shadow:0 1px 2px #0002}.quick-add-hint.idle{opacity:.75}.quick-add-bottom-hint.quick-add-hint.idle{opacity:1}.quick-add-bottom-hint.is-hidden,.quick-add-bottom-hint.quick-add-hint.idle.is-hidden{opacity:0;transform:translateY(4px);pointer-events:none}
 /* Confirms the capture hotkey landed: focus alone is easy to miss when the
    caret was already elsewhere on screen. */
 @keyframes quick-add-flash{from{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 45%,transparent)}to{box-shadow:0 0 0 7px transparent}}
@@ -345,7 +345,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .meta-details .icon-dropdown-trigger,.meta-details .date-picker-trigger,.meta-bar .chip-input{border-color:transparent}
 .meta-details .icon-dropdown-trigger:focus-visible,.meta-details .date-picker-trigger:focus-visible,.meta-bar .chip-input:focus-within{outline:2px solid var(--focus-ring);outline-offset:1px;border-color:transparent;background:var(--bg-alt)}
 /* Related documents stay as chips; adding another is a contextual action after them. */
-.related-documents{margin:8px 0 14px;padding:12px 0 0;border-top:1px solid var(--border-strong);background:transparent;gap:5px 8px}
+.related-document-type-icon svg{color:inherit}.related-documents{margin:8px 0 14px;padding:12px 0 0;border-top:1px solid var(--border-strong);background:transparent;gap:5px 8px}
 .related-documents.has-links{margin-top:16px}
 .related-documents .document-picker-trigger{padding:3px 4px;border:1px solid transparent;background:transparent;color:var(--type-note)}
 .related-documents .document-picker-trigger:hover{background:color-mix(in srgb,var(--type-note) 8%,var(--bg-alt))}

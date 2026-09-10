@@ -26,7 +26,6 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [showShorthandReference, setShowShorthandReference] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [focused, setFocused] = useState(false);
   const [flash, setFlash] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [expanded, setExpanded] = useState(false);
@@ -242,8 +241,7 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
             ref={inputRef}
             className="quick-add-input"
             aria-label="Quick add"
-            placeholder="Buy milk #errand @due:tomorrow"
-            title="Shorthand: [task|note|idea|bookmark] Title #tag @due:date — Ctrl+Space shows all syntax"
+            placeholder="[task|note|idea|bookmark] Title #tag @due:date"
             value={text}
             autoComplete="off"
             role="combobox"
@@ -266,12 +264,10 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
             onFocus={(e) => {
               syncCaret(e.currentTarget);
               setSuggestOpen(true);
-              setFocused(true);
             }}
             onBlur={() => {
               setSuggestOpen(false);
               setShowShorthandReference(false);
-              setFocused(false);
             }}
             onKeyDown={(e) => {
               if (e.ctrlKey && !e.altKey && e.code === "Space") {
@@ -335,11 +331,6 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
               <kbd>Enter</kbd> to {effectiveType === "bookmark" && detectedUrl ? "save link" : "add"}
             </span>
           )}
-          {!text.trim() && !focused && (
-            <span className="quick-add-hint idle" title={`Jump here with ${shortcutLabel(shortcut)}`}>
-              <kbd>{shortcutLabel(shortcut)}</kbd>
-            </span>
-          )}
         </div>
         <button className="icon-btn" aria-label={expanded ? "Collapse add form" : "Expand add form"} title={expanded ? "Collapse add form" : "More fields"} aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
           {expanded ? <IconChevronUp /> : <IconChevronDown />}
@@ -347,6 +338,10 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
         <button className="icon-btn" aria-label={`New note in full-screen editor (${shortcutLabel(newNoteShortcut)})`} title={`New note in full-screen editor (${shortcutLabel(newNoteShortcut)})`} onClick={() => void openBlankFullEditor()}>
           <IconMaximize />
         </button>
+      </div>
+      <div className={`quick-add-bottom-hint quick-add-hint idle${text.trim() ? " is-hidden" : ""}`} aria-hidden={Boolean(text.trim())}>
+          <span><kbd>{shortcutLabel(shortcut)}</kbd> to focus</span>
+          <span><kbd>Ctrl+Space</kbd> for all syntax</span>
       </div>
       <div className={`quick-add-form-shell${expanded ? " expanded" : ""}`} inert={!expanded}>
         <div className="quick-add-form">
