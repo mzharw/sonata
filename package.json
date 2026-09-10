@@ -12,7 +12,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "tauri": "tauri",
-    "build:menu": "bash scripts/build.sh"
+    "build:menu": "node scripts/build.mjs"
   },
   "dependencies": {
     "@tanstack/react-query": "^5.66.8",

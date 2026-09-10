@@ -2,7 +2,7 @@
 
 This document describes how to build Sonata for development, validation, and release. Release builds should be made on the target operating system with that platform's native toolchain. Tauri's Windows MSVC build is the supported Windows release path.
 
-For an interactive menu covering every command below, run `scripts/build.sh` (or `npm run build:menu`). It also accepts a target directly, e.g. `scripts/build.sh windows-xwin`, and `scripts/build.sh doctor` checks what's installed for building on the current machine. Run `scripts/build.sh help` for the full list.
+For an interactive menu covering the common commands below, run `npm run build:menu`. It also accepts a target directly, e.g. `npm run build:menu -- windows-native`, and `npm run build:menu -- doctor` checks what's installed. The legacy `scripts/build.sh` remains available on Unix-like systems.
 
 ## Prerequisites
 
