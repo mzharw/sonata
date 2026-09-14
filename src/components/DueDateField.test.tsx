@@ -5,6 +5,10 @@ import { DueDateField } from "./DueDateField";
 
 afterEach(cleanup);
 
+// Keep fixtures safely in the future so the component's real past-reminder
+// validation does not make these interaction tests date-dependent.
+const TEST_DATE = "2099-09-10";
+
 function mount(value: string, withTime = true) {
   const onChange = vi.fn();
   render(<DueDateField value={value} onChange={onChange} label="reminder" withTime={withTime} />);
@@ -15,7 +19,7 @@ function mount(value: string, withTime = true) {
 describe("picking a day", () => {
   // Choosing "tomorrow" on a 15:30 reminder must not silently drop the 15:30.
   it("keeps a time that was already set", () => {
-    const onChange = mount("2026-09-10T15:30");
+    const onChange = mount(`${TEST_DATE}T15:30`);
     fireEvent.click(screen.getByRole("button", { name: "Tomorrow" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(onChange).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}T15:30$/));
@@ -29,7 +33,7 @@ describe("picking a day", () => {
   });
 
   it("drops the time when the field has none to keep", () => {
-    const onChange = mount("2026-09-10T15:30", false);
+    const onChange = mount(`${TEST_DATE}T15:30`, false);
     fireEvent.click(screen.getByRole("button", { name: "Today" }));
     expect(onChange).toHaveBeenCalledWith(expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/));
   });
@@ -37,11 +41,11 @@ describe("picking a day", () => {
 
 describe("picking a time", () => {
   it("keeps the day that was already chosen", () => {
-    const onChange = mount("2026-09-10");
+    const onChange = mount(TEST_DATE);
     fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "15" }));
     fireEvent.click(within(screen.getByRole("listbox", { name: "Minute" })).getByRole("option", { name: "30" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(onChange).toHaveBeenCalledWith("2026-09-10T15:30");
+    expect(onChange).toHaveBeenCalledWith(`${TEST_DATE}T15:30`);
   });
 
   it("does not allow a time before a day has been chosen", () => {
@@ -51,45 +55,45 @@ describe("picking a time", () => {
   });
 
   it("can be cleared back to a plain date, which the backend fires in the morning", () => {
-    const onChange = mount("2026-09-10T15:30");
+    const onChange = mount(`${TEST_DATE}T15:30`);
     expect(screen.queryByText("No time set")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Clear time" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(onChange).toHaveBeenCalledWith("2026-09-10");
+    expect(onChange).toHaveBeenCalledWith(TEST_DATE);
   });
 
   it("shows 00:00 in the picker without assigning a time to a date-only reminder", () => {
-    mount("2026-09-10");
+    mount(TEST_DATE);
     expect(screen.getByLabelText("Time for reminder").textContent).toBe("00:00");
     expect(screen.queryByRole("button", { name: "Clear time" })).toBeNull();
   });
 
   it("uses 00 minutes when an hour is chosen first", () => {
-    const onChange = mount("2026-09-10");
+    const onChange = mount(TEST_DATE);
     fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "08" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(onChange).toHaveBeenCalledWith("2026-09-10T08:00");
+    expect(onChange).toHaveBeenCalledWith(`${TEST_DATE}T08:00`);
   });
 
   it("keeps the selected minute when changing the hour", () => {
-    const onChange = mount("2026-09-10T08:15");
+    const onChange = mount(`${TEST_DATE}T08:15`);
     fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "09" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(onChange).toHaveBeenCalledWith("2026-09-10T09:15");
+    expect(onChange).toHaveBeenCalledWith(`${TEST_DATE}T09:15`);
   });
 
   it("stays open while an hour or minute grid is scrolled", () => {
-    mount("2026-09-10");
+    mount(TEST_DATE);
     fireEvent.scroll(screen.getByRole("listbox", { name: "Minute" }));
     expect(screen.getByRole("listbox", { name: "Hour" })).toBeTruthy();
     expect(screen.getByRole("listbox", { name: "Minute" })).toBeTruthy();
   });
 
   it("can be closed with Done after choosing a date and time", () => {
-    const onChange = mount("2026-09-10");
+    const onChange = mount(TEST_DATE);
     fireEvent.click(within(screen.getByRole("listbox", { name: "Hour" })).getByRole("option", { name: "08" }));
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
-    expect(onChange).toHaveBeenCalledWith("2026-09-10T08:00");
+    expect(onChange).toHaveBeenCalledWith(`${TEST_DATE}T08:00`);
     expect(screen.queryByRole("dialog", { name: "Choose reminder" })).toBeNull();
   });
 
@@ -146,7 +150,7 @@ describe("opening the time wheels", () => {
   afterEach(() => restoreLayout());
 
   it("scrolls the chosen hour and minute to the middle", () => {
-    mount("2026-09-10T15:30");
+    mount(`${TEST_DATE}T15:30`);
     expect(screen.getByRole("listbox", { name: "Hour" }).scrollTop).toBe(centredScrollTop(15, 24));
     expect(screen.getByRole("listbox", { name: "Minute" }).scrollTop).toBe(centredScrollTop(30, 60));
   });
@@ -154,13 +158,13 @@ describe("opening the time wheels", () => {
   // The wheels repeat, so even 00:00 has to start in the middle copy: opening at the
   // very top would leave the user unable to scroll up.
   it("starts in the middle copy when no time is set yet", () => {
-    mount("2026-09-10");
+    mount(TEST_DATE);
     expect(screen.getByRole("listbox", { name: "Hour" }).scrollTop).toBe(centredScrollTop(0, 24));
     expect(screen.getByRole("listbox", { name: "Minute" }).scrollTop).toBe(centredScrollTop(0, 60));
   });
 
   it("leaves the wheel where the user left it when a new hour is clicked", () => {
-    mount("2026-09-10T15:30");
+    mount(`${TEST_DATE}T15:30`);
     const hours = screen.getByRole("listbox", { name: "Hour" });
     hours.scrollTop = 900;
     fireEvent.click(within(hours).getByRole("option", { name: "09" }));
@@ -170,7 +174,7 @@ describe("opening the time wheels", () => {
 
 describe("reading a hand-written value", () => {
   it("selects the day and time from a value written with a space", () => {
-    mount("2026-09-10 15:30");
+    mount(`${TEST_DATE} 15:30`);
     expect(screen.getByLabelText("Time for reminder").textContent).toBe("15:30");
     expect(screen.getByRole("button", { name: "Choose reminder" }).textContent).toMatch(/Sep 10.*3:30/);
   });

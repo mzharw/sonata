@@ -254,6 +254,7 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
           cancelPreview();
           if (event.shiftKey && onSelectForBulk) {
             if (selectionMode && onSelectRangeForBulk) onSelectRangeForBulk(doc.id);
+            else if (isSelected && onToggleBulkSelection) onToggleBulkSelection(doc.id);
             else onSelectForBulk(doc.id);
             return;
           }
