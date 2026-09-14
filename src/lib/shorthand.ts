@@ -3,7 +3,7 @@ import { TYPE_KEYWORDS } from "./documentTypes";
 /**
  * Autocomplete for the quick-add shorthand grammar:
  *
- *   [task|todo|note|idea|bookmark] Title #tag @due:date
+ *   [task|todo|note|idea|bookmark] Title :: Content #tag @due:date @priority:urgent
  *
  * Everything offered here has to be something the Rust `capture_input` parser actually
  * understands — suggesting e.g. "@due:next friday" would look helpful and then silently
@@ -36,11 +36,16 @@ const SUGGESTED_TYPE_KEYWORDS = TYPE_KEYWORDS.filter((k) => k !== "inbox");
 /** The grammar reference shown from Quick Add with Ctrl+Space. */
 export const ALL_SHORTHAND_SUGGESTIONS: ShorthandSuggestion[] = [
   ...SUGGESTED_TYPE_KEYWORDS.map((type) => ({ insert: type, label: type, hint: "type" })),
+  { insert: "::", label: ":: content", hint: "note content" },
   { insert: "#tag", label: "#tag", hint: "tag" },
   { insert: "@due:today", label: "@due:today", hint: "due today" },
   { insert: "@due:tomorrow", label: "@due:tomorrow", hint: "due tomorrow" },
   { insert: "@due:yesterday", label: "@due:yesterday", hint: "due yesterday" },
   { insert: "@due:YYYY-MM-DD", label: "@due:YYYY-MM-DD", hint: "due date" },
+  { insert: "@priority:urgent", label: "@priority:urgent", hint: "urgency" },
+  { insert: "@status:in_progress", label: "@status:in_progress", hint: "task status" },
+  { insert: "@stage:developing", label: "@stage:developing", hint: "idea stage" },
+  { insert: "@reminder:YYYY-MM-DDTHH:MM", label: "@reminder:YYYY-MM-DDTHH:MM", hint: "reminder" },
 ];
 
 /** Whether the text opens with a word the capture parser reads as a type. */
@@ -71,6 +76,15 @@ export function dueSuggestions(today: Date = new Date()): Array<ShorthandSuggest
 
 const MAX_ITEMS = 6;
 
+/** Metadata fields offered as soon as their `@` prefix is being typed. */
+const METADATA_SCAFFOLDS: ShorthandSuggestion[] = [
+  { insert: "@due:", label: "@due:", hint: "due date", space: false },
+  { insert: "@priority:", label: "@priority:", hint: "urgency", space: false },
+  { insert: "@status:", label: "@status:", hint: "task status", space: false },
+  { insert: "@stage:", label: "@stage:", hint: "idea stage", space: false },
+  { insert: "@reminder:", label: "@reminder:", hint: "reminder", space: false },
+];
+
 /** The run of non-whitespace characters ending at `caret`. */
 function tokenAt(text: string, caret: number): { start: number; token: string } {
   const before = text.slice(0, caret);
@@ -90,6 +104,12 @@ export function shorthandSuggestions(
   const unlessAlreadyTyped = (items: ShorthandSuggestion[]): ShorthandMatch | null =>
     items.length === 0 || (items.length === 1 && items[0].insert === token) ? null : { start, items };
 
+  // `::` is the body separator. Suggest it from its first character so it is
+  // discoverable through ordinary typing as well as the Ctrl+Space reference.
+  if (token === ":") {
+    return { start, items: [{ insert: "::", label: ":: content", hint: "note content" }] };
+  }
+
   if (token.startsWith("#")) {
     const query = token.slice(1).toLowerCase();
     // Tags already written elsewhere in the line are not worth offering again.
@@ -106,17 +126,29 @@ export function shorthandSuggestions(
 
   if (token.startsWith("@")) {
     const due = /^@due:(.*)$/.exec(token);
-    if (!due) {
-      // Still spelling out the field name — offer the scaffold, and leave the caret
-      // right after it so the date can be typed or picked from the list that follows.
-      return "@due:".startsWith(token)
-        ? { start, items: [{ insert: "@due:", label: "@due:", hint: "due date", space: false }] }
-        : null;
+    if (due) {
+      const query = due[1].toLowerCase();
+      const items = dueSuggestions(options.today)
+        .filter(({ match }) => query === "" || match.some((m) => m.toLowerCase().startsWith(query)))
+        .map(({ insert, label, hint }) => ({ insert, label, hint }));
+      return unlessAlreadyTyped(items);
     }
-    const query = due[1].toLowerCase();
-    const items = dueSuggestions(options.today)
-      .filter(({ match }) => query === "" || match.some((m) => m.toLowerCase().startsWith(query)))
-      .map(({ insert, label, hint }) => ({ insert, label, hint }));
+
+    const field = /^@(priority|status|stage|reminder):(.*)$/.exec(token);
+    if (field) {
+      const values: Record<string, ShorthandSuggestion[]> = {
+        priority: ["low", "medium", "high", "urgent"].map((value) => ({ insert: `@priority:${value}`, label: `@priority:${value}`, hint: "urgency" })),
+        status: ["todo", "in_progress", "completed", "cancelled"].map((value) => ({ insert: `@status:${value}`, label: `@status:${value}`, hint: "task status" })),
+        stage: ["spark", "developing", "parked"].map((value) => ({ insert: `@stage:${value}`, label: `@stage:${value}`, hint: "idea stage" })),
+        reminder: [{ insert: "@reminder:YYYY-MM-DDTHH:MM", label: "@reminder:YYYY-MM-DDTHH:MM", hint: "reminder" }],
+      };
+      const items = values[field[1]].filter(({ insert }) => insert.startsWith(token));
+      return unlessAlreadyTyped(items);
+    }
+
+    // Every metadata form is discoverable from `@` and narrows as its field
+    // name is typed; accepting one leaves the caret after its colon.
+    const items = METADATA_SCAFFOLDS.filter(({ insert }) => insert.startsWith(token));
     return unlessAlreadyTyped(items);
   }
 

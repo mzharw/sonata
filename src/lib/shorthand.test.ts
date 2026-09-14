@@ -53,6 +53,34 @@ describe("shorthandSuggestions", () => {
     ]);
   });
 
+  it("offers content and metadata shorthand", () => {
+    expect(suggest("Note title :")?.items).toEqual([
+      { insert: "::", label: ":: content", hint: "note content" },
+    ]);
+    expect(suggest("Note title @p")?.items).toEqual([
+      { insert: "@priority:", label: "@priority:", hint: "urgency", space: false },
+    ]);
+    expect(suggest("Note title @")?.items.map((item) => item.insert)).toEqual([
+      "@due:",
+      "@priority:",
+      "@status:",
+      "@stage:",
+      "@reminder:",
+    ]);
+    expect(suggest("Note title @priority:", 22)?.items.map((item) => item.insert)).toEqual([
+      "@priority:low",
+      "@priority:medium",
+      "@priority:high",
+      "@priority:urgent",
+    ]);
+    expect(suggest("Note title @status:", 20)?.items.map((item) => item.insert)).toEqual([
+      "@status:todo",
+      "@status:in_progress",
+      "@status:completed",
+      "@status:cancelled",
+    ]);
+  });
+
   it("filters date keywords by what has been typed and resolves them in the hint", () => {
     expect(suggest("Buy milk @due:tom")?.items).toEqual([
       { insert: "@due:tomorrow", label: "@due:tomorrow", hint: "2026-09-07" },

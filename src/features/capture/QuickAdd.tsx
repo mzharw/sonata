@@ -1,53 +1,61 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
 import { useUi } from "../../stores/ui";
 import { sections } from "../search/views";
-import { DEFAULT_CAPTURE_TYPE, DEFAULT_FULLSCREEN_TYPE, TYPE_SPECS, type MetaField } from "../../lib/documentTypes";
-import { TagChipInput } from "../../components/TagChipInput";
-import { DueDateField } from "../../components/DueDateField";
-import { PrioritySelect } from "../../components/PrioritySelect";
-import { StatusSelect } from "../../components/StatusSelect";
-import { StageSelect } from "../../components/StageSelect";
-import { UrlField } from "../../components/UrlField";
+import { DEFAULT_CAPTURE_TYPE, DEFAULT_FULLSCREEN_TYPE, DOCUMENT_TYPES, TYPE_SPECS } from "../../lib/documentTypes";
 import { TypeSelect } from "../../components/TypeSelect";
 import { detectUrl, normalizeUrl, urlDomain } from "../../lib/url";
-import { IconBell, IconChevronDown, IconChevronUp, IconMaximize, IconPlus } from "../../components/icons";
+import { IconFullScreenEdit } from "../../components/icons";
 import { ALL_SHORTHAND_SUGGESTIONS, applyShorthandSuggestion, opensWithTypeKeyword, shorthandSuggestions, type ShorthandSuggestion } from "../../lib/shorthand";
 import { DEFAULT_PREFERENCES, shortcutLabel, matchesShortcut } from "../../lib/preferences";
-import type { DocumentType, IdeaStage, Priority, TaskStatus } from "../../types/domain";
+import type { DocumentType } from "../../types/domain";
+
+const resizeInput = (target: HTMLTextAreaElement) => {
+  // A textarea can retain the previous content's scroll height after it is
+  // cleared. The empty capture must always return to its compact baseline.
+  if (!target.value) {
+    target.style.height = "32px";
+    target.style.overflowY = "hidden";
+    return;
+  }
+  target.style.height = "auto";
+  const contentHeight = target.scrollHeight;
+  target.style.height = `${Math.max(32, Math.min(contentHeight, 160))}px`;
+  // Avoid a distracting scrollbar while the field can still grow. It becomes
+  // available only after the capped height can no longer hold the content.
+  target.style.overflowY = contentHeight > 160 ? "auto" : "hidden";
+};
 
 export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, newNoteShortcut = DEFAULT_PREFERENCES.shortcuts.newNote, visible = true }: { shortcut?: string; newNoteShortcut?: string; visible?: boolean }) {
   const ui = useUi();
   const qc = useQueryClient();
   const [text, setText] = useState("");
+  const [captureFocused, setCaptureFocused] = useState(false);
   const [caret, setCaret] = useState(0);
   const [highlight, setHighlight] = useState(0);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const [showShorthandReference, setShowShorthandReference] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
   const [flash, setFlash] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const [expanded, setExpanded] = useState(false);
   const [temporary, setTemporary] = useState(false);
   // Capture lands in the inbox, matching the Rust default, which is what makes the
   // Triage verb on an inbox row mean anything.
   const [type, setType] = useState<DocumentType>(DEFAULT_CAPTURE_TYPE);
   // Set once the user picks a type by hand, so URL detection stops second-guessing them.
   const typeTouched = useRef(false);
-  const [title, setTitle] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [due, setDue] = useState("");
-  const [priority, setPriority] = useState<Priority>();
-  const [status, setStatus] = useState<TaskStatus>();
-  const [reminder, setReminder] = useState("");
-  const [stage, setStage] = useState<IdeaStage>();
-  const [url, setUrl] = useState("");
 
   const impliedType = sections.find(([view]) => view === ui.view)?.[2];
-  const effectiveType = impliedType ?? type;
+  // A complete leading shorthand keyword is already the source of truth for capture. Mirror
+  // it in the picker too, so typing `task`, `note`, or the `todo` task alias gives immediate
+  // visual feedback without overwriting the user's previous manual picker choice.
+  const shorthandType = useMemo(() => {
+    const keyword = text.trimStart().split(/\s+/, 1)[0]?.toLowerCase();
+    return DOCUMENT_TYPES.find((candidate) => keyword && TYPE_SPECS[candidate].keywords.includes(keyword));
+  }, [text]);
+  const effectiveType = impliedType ?? shorthandType ?? type;
   const ImpliedIcon = impliedType ? TYPE_SPECS[impliedType].icon : undefined;
-  const spec = TYPE_SPECS[effectiveType];
   const detectedUrl = detectUrl(text);
 
   const knownTags = useQuery({ queryKey: ["tags"], queryFn: native.tags });
@@ -62,7 +70,18 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
   const activeSuggestion = showShorthandReference ? { start: caret, items: ALL_SHORTHAND_SUGGESTIONS } : suggestion;
   const suggestions = suggestOpen ? (activeSuggestion?.items ?? []) : [];
 
-  const syncCaret = (target: HTMLInputElement) => setCaret(target.selectionStart ?? target.value.length);
+  const syncCaret = (target: HTMLTextAreaElement) => setCaret(target.selectionStart ?? target.value.length);
+  // Use the exact same measurement for an empty capture as for typed text.
+  // `useLayoutEffect` applies it before the textarea is painted, preventing its
+  // browser-default height from flashing until the first keystroke resizes it.
+  useLayoutEffect(() => {
+    if (inputRef.current) resizeInput(inputRef.current);
+  }, []);
+  // Submission clears React state without an input event, so reset the DOM
+  // height here as well instead of leaving the last expanded measurement.
+  useLayoutEffect(() => {
+    if (!text && inputRef.current) resizeInput(inputRef.current);
+  }, [text]);
 
   const acceptSuggestion = (item: ShorthandSuggestion) => {
     if (!activeSuggestion) return;
@@ -127,49 +146,11 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
     }
   };
 
-  const submitStructured = async () => {
-    const finalTitle = title.trim() || text.trim();
-    if (!finalTitle) return;
-    try {
-      // Only the fields this type carries are sent, so a due date typed under Task cannot
-      // ride along after switching the dropdown to Note. Rust prunes the rest regardless.
-      const has = (field: MetaField) => spec.meta.includes(field);
-      const doc = await native.createDocument({
-        type: effectiveType,
-        title: finalTitle,
-        tags,
-        body: "",
-        ...(has("due") && due ? { due } : {}),
-        ...(has("priority") && priority ? { priority } : {}),
-        ...(has("status") && status ? { status } : {}),
-        ...(has("reminder") && reminder ? { reminder } : {}),
-        ...(has("stage") && stage ? { stage } : {}),
-        ...(has("url") && url.trim() ? { bookmark: { url: normalizeUrl(url) } } : {}),
-      });
-      setText("");
-      setCaret(0);
-      setTitle("");
-      setTags([]);
-      setDue("");
-      setPriority(undefined);
-      setStatus(undefined);
-      setReminder("");
-      setStage(undefined);
-      setUrl("");
-      setExpanded(false);
-      if (!visible) setTemporary(false);
-      afterCreate(doc.id);
-    } catch (error) {
-      console.error("Failed to create document", error);
-      ui.showToast({ message: "Couldn't add that — see console for details" });
-    }
-  };
-
   const openBlankFullEditor = async () => {
     try {
       const doc = await native.createDocument({ type: DEFAULT_FULLSCREEN_TYPE, title: `New ${TYPE_SPECS[DEFAULT_FULLSCREEN_TYPE].label.toLowerCase()}`, body: "" });
       qc.invalidateQueries({ queryKey: ["documents"] });
-      ui.openFullScreen(doc.id);
+      ui.openFullScreen(doc.id, true);
     } catch (error) {
       console.error("Failed to create document", error);
       ui.showToast({ message: "Couldn't create a new note — see console for details" });
@@ -216,7 +197,7 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
   if (!visible && !temporary) return null;
 
   return (
-    <div className="quick-add-wrap" onKeyDown={(e) => { if (e.key === "Escape" && expanded) setExpanded(false); }}>
+    <div className="quick-add-wrap">
       <div className="quick-add">
         <div className={`quick-add-input-wrap${flash ? " is-hotkey-flash" : ""}`}>
           {impliedType ? (
@@ -228,18 +209,21 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
           ) : (
             <TypeSelect
               className="quick-add-type-dropdown"
-              value={type}
+              value={shorthandType ?? type}
               onChange={(next) => {
                 typeTouched.current = true;
                 setType(next);
               }}
+              ariaLabel={`Type: ${TYPE_SPECS[shorthandType ?? type].label}`}
               compact
               showChevron
-            />
+              />
           )}
-          <input
+          {!text && <span className={`quick-add-placeholder-hint${captureFocused ? " is-focused" : ""}`} aria-hidden="true">[task|note|idea|bookmark] Title #tag @due:date</span>}
+          <textarea
+            rows={1}
             ref={inputRef}
-            className="quick-add-input"
+            className={`quick-add-input${!text ? " has-placeholder-hint" : ""}`}
             aria-label="Quick add"
             placeholder="[task|note|idea|bookmark] Title #tag @due:date"
             value={text}
@@ -249,6 +233,7 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
             aria-controls="quick-add-suggestions"
             onChange={(e) => {
               setText(e.target.value);
+              resizeInput(e.currentTarget);
               syncCaret(e.target);
               setHighlight(0);
               setShowShorthandReference(false);
@@ -262,10 +247,12 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
             }}
             onSelect={(e) => syncCaret(e.currentTarget)}
             onFocus={(e) => {
+              setCaptureFocused(true);
               syncCaret(e.currentTarget);
               setSuggestOpen(true);
             }}
             onBlur={() => {
+              setCaptureFocused(false);
               setSuggestOpen(false);
               setShowShorthandReference(false);
             }}
@@ -302,7 +289,9 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
                   return;
                 }
               }
-              if (e.key === "Enter") {
+              // Shift+Enter is the textarea's newline shortcut. Keep it out of
+              // the capture path even when the shorthand has no `::` body yet.
+              if (e.key === "Enter" && !e.shiftKey && ((e.ctrlKey || e.metaKey) || !text.includes("::"))) {
                 e.preventDefault();
                 void submitShorthand();
               }
@@ -328,51 +317,16 @@ export function QuickAdd({ shortcut = DEFAULT_PREFERENCES.shortcuts.capture, new
           )}
           {text.trim() && suggestions.length === 0 && (
             <span className="quick-add-hint">
-              <kbd>Enter</kbd> to {effectiveType === "bookmark" && detectedUrl ? "save link" : "add"}
+              <kbd>{text.includes("::") ? "Ctrl+Enter" : "Enter"}</kbd> to {effectiveType === "bookmark" && detectedUrl ? "save link" : "add"}
             </span>
           )}
         </div>
-        <button className="icon-btn" aria-label={expanded ? "Collapse add form" : "Expand add form"} title={expanded ? "Collapse add form" : "More fields"} aria-expanded={expanded} onClick={() => setExpanded((v) => !v)}>
-          {expanded ? <IconChevronUp /> : <IconChevronDown />}
-        </button>
         <button className="icon-btn" aria-label={`New note in full-screen editor (${shortcutLabel(newNoteShortcut)})`} title={`New note in full-screen editor (${shortcutLabel(newNoteShortcut)})`} onClick={() => void openBlankFullEditor()}>
-          <IconMaximize />
+          <IconFullScreenEdit />
         </button>
       </div>
       <div className={`quick-add-bottom-hint quick-add-hint idle${text.trim() ? " is-hidden" : ""}`} aria-hidden={Boolean(text.trim())}>
-          <span><kbd>{shortcutLabel(shortcut)}</kbd> to focus</span>
-          <span><kbd>Ctrl+Space</kbd> for all syntax</span>
-      </div>
-      <div className={`quick-add-form-shell${expanded ? " expanded" : ""}`} inert={!expanded}>
-        <div className="quick-add-form">
-          <div className="form-field">
-            <label className="form-field-label" htmlFor="quick-add-title">Title</label>
-            <input id="quick-add-title" className="field" placeholder="Defaults to the text above" value={title} onChange={(e) => setTitle(e.target.value)} />
-          </div>
-          {(() => {
-            // Same exhaustive-map shape as DocumentMetaBar, but wrapped in the form's
-            // labelled fields rather than the bare pills.
-            const fields: Record<MetaField, { label: string; control: React.ReactNode }> = {
-              tags: { label: "Tags", control: <TagChipInput value={tags} onChange={setTags} /> },
-              status: { label: "Status", control: <StatusSelect value={status} onChange={setStatus} /> },
-              priority: { label: "Priority", control: <PrioritySelect value={priority} onChange={setPriority} /> },
-              due: { label: "Due date", control: <DueDateField value={due} onChange={setDue} /> },
-              reminder: {
-                label: "Reminder",
-                control: <DueDateField value={reminder} onChange={setReminder} icon={IconBell} placeholder="No reminder" label="reminder" withTime />,
-              },
-              stage: { label: "Stage", control: <StageSelect value={stage} onChange={setStage} /> },
-              url: { label: "Link", control: <UrlField value={url} onChange={setUrl} /> },
-            };
-            return spec.meta.map((field) => (
-              <div className="form-field" key={field}>
-                <span className="form-field-label">{fields[field].label}</span>
-                {fields[field].control}
-              </div>
-            ));
-          })()}
-          <button className="primary" onClick={() => void submitStructured()}><IconPlus size={14} /> Add</button>
-        </div>
+        {captureFocused ? <span><kbd>Ctrl+Space</kbd><span className="quick-add-hint-label">for all syntax</span></span> : <span><kbd>{shortcutLabel(shortcut)}</kbd><span className="quick-add-hint-label">to focus</span></span>}
       </div>
     </div>
   );

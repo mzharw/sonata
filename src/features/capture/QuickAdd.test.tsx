@@ -26,14 +26,37 @@ function mount() {
       <QuickAdd />
     </QueryClientProvider>,
   );
-  return screen.getByLabelText("Quick add") as HTMLInputElement;
+  return screen.getByLabelText("Quick add") as HTMLTextAreaElement;
 }
 
 /** `fireEvent.change` leaves the caret at 0 in jsdom; real typing puts it after the text. */
-function type(input: HTMLInputElement, value: string) {
+function type(input: HTMLTextAreaElement, value: string) {
   fireEvent.focus(input);
   fireEvent.change(input, { target: { value, selectionStart: value.length, selectionEnd: value.length } });
 }
+
+it("keeps the shorthand field at its one-line height before and after typing", async () => {
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  const initialHeight = input.style.height;
+  expect(initialHeight).not.toBe("");
+  expect(input.style.overflowY).toBe("hidden");
+  type(input, "Buy milk");
+  expect(input.style.height).toBe(initialHeight);
+  expect(input.style.overflowY).toBe("hidden");
+});
+
+it("restores the compact shorthand height when all text is removed", async () => {
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  const initialHeight = input.style.height;
+  type(input, "Buy milk");
+  type(input, "");
+
+  expect(input.style.height).toBe(initialHeight);
+});
 
 it("suggests workspace tags while a #tag is being typed", async () => {
   const input = mount();
@@ -72,6 +95,15 @@ it("captures on Enter once there is nothing left to complete", async () => {
   // Capture defaults to Inbox, which is the Rust default too, so no prefix is needed —
   // plain capture no longer silently files everything as a note.
   await waitFor(() => expect(native.capture).toHaveBeenCalledWith("Buy milk #errand"));
+});
+
+it("leaves Shift+Enter to insert a shorthand newline instead of capturing", async () => {
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  type(input, "Buy milk");
+  expect(fireEvent.keyDown(input, { key: "Enter", shiftKey: true })).toBe(true);
+  expect(native.capture).not.toHaveBeenCalled();
 });
 
 it("offers the @due: scaffold and then only date keywords the backend resolves", async () => {
@@ -149,6 +181,15 @@ it("lets a typed type keyword override the default type rather than burying it i
   await waitFor(() => expect(native.capture).toHaveBeenCalledWith("task Buy milk"));
 });
 
+it("reflects a leading shorthand type in the type picker", async () => {
+  const input = mount();
+  await waitFor(() => expect(native.tags).toHaveBeenCalled());
+
+  type(input, "todo Buy milk");
+
+  expect(screen.getByRole("button", { name: "Type: Task" })).toBeTruthy();
+});
+
 it("still offers type keywords under the default type", async () => {
   const input = mount();
   await waitFor(() => expect(native.tags).toHaveBeenCalled());
@@ -216,7 +257,7 @@ it("does not override a type the user picked by hand", async () => {
   const input = mount();
   await waitFor(() => expect(native.tags).toHaveBeenCalled());
 
-  fireEvent.click(screen.getByRole("button", { name: "Type" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Type:/ }));
   // The option's handler sits on the button inside the `role="option"` li.
   fireEvent.click(screen.getByRole("button", { name: "Note" }));
   type(input, "https://example.com/a");
