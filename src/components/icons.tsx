@@ -18,6 +18,8 @@ export const IconTrash = (props: IconProps) => <svg {...base(props)}><path d="M4
 export const IconCommand = (props: IconProps) => <svg {...base(props)}><path d="M9 3a3 3 0 1 0 3 3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3" /></svg>;
 export const IconRefresh = (props: IconProps) => <svg {...base(props)}><path d="M21 12a9 9 0 1 1-3-6.7M21 3v6h-6" /></svg>;
 export const IconMaximize = (props: IconProps) => <svg {...base(props)}><path d="M9 3H3v6M15 3h6v6M21 15v6h-6M3 15v6h6" /></svg>;
+/** Opens the current document in the larger editing surface, not just a larger view. */
+export const IconFullScreenEdit = (props: IconProps) => <svg {...base(props)}><path d="M9 3H3v6M15 3h6v6M3 15v6h4" /><path d="m14 17 4.5-4.5 2 2L16 19l-3 1Z" fill="none" /></svg>;
 export const IconArrowLeft = (props: IconProps) => <svg {...base(props)}><path d="M19 12H5M11 5l-7 7 7 7" /></svg>;
 export const IconCalendar = (props: IconProps) => <svg {...base(props)}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></svg>;
 export const IconX = (props: IconProps) => <svg {...base(props)}><path d="M18 6 6 18M6 6l12 12" /></svg>;
@@ -28,7 +30,7 @@ export const IconInbox = (props: IconProps) => <svg {...base(props)}><path d="M4
 export const IconPin = (props: IconProps) => <svg {...base(props)}><path d="M9 4h6l-1 6 3 3v2H7v-2l3-3-1-6Z" /><path d="M12 15v5" /></svg>;
 export const IconFlag = (props: IconProps) => <svg {...base(props)}><path d="M5 3v18" /><path d="M5 4h11l-2.5 4L16 12H5Z" /></svg>;
 export const IconFilter = (props: IconProps) => <svg {...base(props)}><path d="M4 7h16M7 12h10M10 17h4" /></svg>;
-export const IconSettings = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.2 2.2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.2-2.2.1-.1A1.7 1.7 0 0 0 6.6 15a1.7 1.7 0 0 0-1.6-1H4.8v-3.2H5a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.2-2.2.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h3.2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.2 2.2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2V14H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>;
+export const IconSettings = (props: IconProps) => <svg {...base(props)}><circle cx="12.9" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.2 2.2-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3.2v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.2-2.2.1-.1A1.7 1.7 0 0 0 6.6 15a1.7 1.7 0 0 0-1.6-1H4.8v-3.2H5a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.2-2.2.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h3.2v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.2 2.2-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2V14H21a1.7 1.7 0 0 0-1.6 1Z" /></svg>;
 export const IconCircleDot = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none" /></svg>;
 export const IconChevronLeft = (props: IconProps) => <svg {...base(props)}><path d="m15 6-6 6 6 6" /></svg>;
 export const IconChevronRight = (props: IconProps) => <svg {...base(props)}><path d="m9 6 6 6-6 6" /></svg>;
@@ -54,6 +56,12 @@ export const IconImagePlus = (props: IconProps) => <svg {...base(props)}><rect x
 export const IconStatusTodo = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="8" fill="none" /></svg>;
 export const IconStatusProgress = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="8" fill="none" /><path d="M12 4a8 8 0 0 1 0 16Z" fill="currentColor" stroke="none" /></svg>;
 export const IconStatusDone = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="8" fill="none" /><path d="M8.5 12.3 11 15l4.5-6" fill="none" /></svg>;
+// Idea stages read as a lifecycle: an ignition spark, a growing sprout, and a
+// deliberately paused idea. Each forces its outline unfilled because dropdowns
+// may pass `fill="currentColor"` to colored option icons.
+export const IconStageSpark = (props: IconProps) => <svg {...base(props)}><path d="m12 3 1.7 5.3L19 10l-5.3 1.7L12 17l-1.7-5.3L5 10l5.3-1.7Z" fill="none" /></svg>;
+export const IconStageDeveloping = (props: IconProps) => <svg {...base(props)}><path d="M12 20v-7" fill="none" /><path d="M12 14c-4 0-6.5-2.5-6.5-6.5C9.5 7.5 12 10 12 14Z" fill="none" /><path d="M12 16c0-4 2.5-6.5 6.5-6.5C18.5 13.5 16 16 12 16Z" fill="none" /></svg>;
+export const IconStageParked = (props: IconProps) => <svg {...base(props)}><circle cx="12" cy="12" r="8" fill="none" /><path d="M10 9v6M14 9v6" fill="none" /></svg>;
 export const IconCodeBlock = (props: IconProps) => <svg {...base(props)}><rect x="3" y="4" width="18" height="16" rx="2" /><path d="m9 10-2 2 2 2M15 10l2 2-2 2" /></svg>;
 export const IconMinus = (props: IconProps) => <svg {...base(props)}><path d="M5 12h14" /></svg>;
 export const IconCheckSquare = (props: IconProps) => <svg {...base(props)}><rect x="4" y="4" width="16" height="16" rx="3" /><path d="m8.5 12.5 2.5 2.5 5-5" /></svg>;

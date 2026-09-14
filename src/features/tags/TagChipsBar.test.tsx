@@ -34,3 +34,20 @@ it("turns a single-tag view into the equivalent filter", async () => {
 
   expect(useUi.getState()).toMatchObject({ view: "all", tag: undefined, filters: { tags: ["work", "urgent"], sort: "default" } });
 });
+
+it("keeps the bar compact and makes less-used tags searchable", async () => {
+  vi.mocked(native.tags).mockResolvedValue([
+    { tag: "work", count: 10 }, { tag: "urgent", count: 9 }, { tag: "home", count: 8 }, { tag: "ideas", count: 7 },
+    { tag: "reading", count: 6 }, { tag: "planning", count: 5 }, { tag: "shopping", count: 4 }, { tag: "health", count: 3 },
+    { tag: "vacation", count: 2 }, { tag: "finance", count: 1 },
+  ]);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TagChipsBar /></QueryClientProvider>);
+
+  await waitFor(() => expect(screen.getByRole("button", { name: /All tags/ })).toBeTruthy());
+  expect(screen.queryByRole("button", { name: "#vacation" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /All tags/ }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Find a tag" }), { target: { value: "vaca" } });
+
+  expect(screen.getByRole("button", { name: /#vacation/ })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /#finance/ })).toBeNull();
+});

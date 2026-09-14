@@ -36,7 +36,7 @@ export function CommandPalette({ close }: { close: () => void }) {
   const create = async (type: DocumentType, mode: "inline" | "fullscreen" = "inline") => {
     const doc = await native.createDocument({ type, title: `New ${TYPE_SPECS[type].label.toLowerCase()}`, body: "" });
     qc.invalidateQueries({ queryKey: ["documents"] });
-    if (mode === "fullscreen") ui.openFullScreen(doc.id);
+    if (mode === "fullscreen") ui.openFullScreen(doc.id, true);
     else ui.expand(doc.id);
   };
 

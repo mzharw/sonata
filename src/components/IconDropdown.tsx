@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ComponentType, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, useState, type ComponentType, type CSSProperties } from "react";
 import { useDismiss } from "../hooks/useDismiss";
 import { IconChevronDown } from "./icons";
 
@@ -28,23 +28,33 @@ export function IconDropdown({
 }) {
   const [open, setOpen] = useState(false);
   const [openUpward, setOpenUpward] = useState(false);
+  const [alignEnd, setAlignEnd] = useState(false);
   const [highlight, setHighlight] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const popoverRef = useRef<HTMLUListElement>(null);
   const current = options.find((o) => o.value === value) ?? options[0];
   const Icon = current?.icon;
 
   useDismiss(open, () => setOpen(false), containerRef);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
     setHighlight(Math.max(0, options.findIndex((o) => o.value === value)));
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (rect) {
-      const estimatedHeight = Math.min(240, options.length * 34 + 10);
-      setOpenUpward(window.innerHeight - rect.bottom < estimatedHeight + 12 && rect.top > estimatedHeight);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+    const position = () => {
+      const trigger = containerRef.current?.getBoundingClientRect();
+      const popover = popoverRef.current?.getBoundingClientRect();
+      if (!trigger || !popover) return;
+      const edge = 12;
+      // The initial left/down placement lets us measure the real menu, including
+      // labels wider than its minimum. Layout effects run before paint, so the
+      // corrective placement never visibly spills past the panel edge.
+      setOpenUpward(popover.bottom > window.innerHeight - edge && trigger.top >= popover.height + edge);
+      setAlignEnd(popover.right > window.innerWidth - edge && trigger.right - popover.width >= edge);
+    };
+    position();
+    window.addEventListener("resize", position);
+    return () => window.removeEventListener("resize", position);
+  }, [open, options, value]);
 
   const commit = (v: string) => {
     onChange(v);
@@ -90,7 +100,7 @@ export function IconDropdown({
         {showChevron && <IconChevronDown size={11} className="icon-dropdown-chevron" />}
       </button>
       {open && (
-        <ul className={`icon-dropdown-popover${openUpward ? " placement-up" : ""}`} role="listbox" aria-label={ariaLabel}>
+        <ul ref={popoverRef} className={`icon-dropdown-popover${openUpward ? " placement-up" : ""}${alignEnd ? " placement-end" : ""}`} role="listbox" aria-label={ariaLabel}>
           {options.map((o, i) => {
             const OptIcon = o.icon;
             return (

@@ -3,12 +3,14 @@ import { createPortal } from "react-dom";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDismiss } from "../hooks/useDismiss";
 import { native } from "../lib/native";
+import { useUi } from "../stores/ui";
 import { TYPE_SPECS } from "../lib/documentTypes";
 import type { SonataDocument } from "../types/domain";
 import { IconPlus, IconSearch, IconX } from "./icons";
 
 /** Editable, ID-backed metadata links. IDs keep relationships intact when a title changes. */
-export function RelatedDocuments({ doc, onChange }: { doc: SonataDocument; onChange: (doc: SonataDocument) => void }) {
+export function RelatedDocuments({ doc, onChange, onOpenDocument }: { doc: SonataDocument; onChange: (doc: SonataDocument) => void; onOpenDocument?: (id: string) => void }) {
+  const ui = useUi();
   const documents = useQuery({ queryKey: ["reference-documents"], queryFn: () => native.listDocuments({}) });
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -43,11 +45,19 @@ export function RelatedDocuments({ doc, onChange }: { doc: SonataDocument; onCha
         const title = related?.title ?? id;
         const TypeIcon = related ? TYPE_SPECS[related.type].icon : undefined;
         const accentVar = related ? TYPE_SPECS[related.type].accentVar : undefined;
-        return <button key={id} className="related-document-chip" type="button" aria-label={`Remove ${title} from related documents`} onClick={() => onChange({ ...doc, links: linked.filter((value) => value !== id) })}>
+        const openRelated = () => {
+          if (onOpenDocument) {
+            onOpenDocument(id);
+            return;
+          }
+          if (ui.fullScreenId) ui.openFullScreen(undefined);
+          ui.expand(id);
+        };
+        return <div key={id} className="related-document-chip">
           {TypeIcon && accentVar && <span className="related-document-type-icon" style={{ color: `var(${accentVar})` }}><TypeIcon size={13} /></span>}
-          <span>{title}</span>
-          <IconX size={12} />
-        </button>;
+          <button type="button" className="related-document-chip-title" aria-label={`Open ${title}`} onClick={openRelated}>{title}</button>
+          <button type="button" className="related-document-chip-remove" aria-label={`Remove ${title} from related documents`} onClick={() => onChange({ ...doc, links: linked.filter((value) => value !== id) })}><IconX size={12} /></button>
+        </div>;
       })}
       <div className="document-picker" ref={pickerRef}>
         <button type="button" className="document-picker-trigger" aria-label="Add related document" aria-expanded={open} onClick={() => setOpen((value) => !value)}>
