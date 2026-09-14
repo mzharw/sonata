@@ -1,6 +1,6 @@
 use crate::{
     db::Index,
-    domain::{DocumentInput, DocumentSummary, DocumentType, SearchQuery, SonataDocument},
+    domain::{DocumentInput, DocumentSummary, DocumentType, IdeaStage, Priority, SearchQuery, SonataDocument, TaskStatus},
     errors::{Result, SonataError},
     indexer, markdown, relations,
     workspace::{LockConfig, Workspace},
@@ -10,6 +10,7 @@ use sha2::{Digest, Sha256};
 #[cfg(windows)]
 use std::process::Command;
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     sync::Mutex,
@@ -28,6 +29,38 @@ pub struct AppState(pub Mutex<Option<Session>>);
 pub struct WorkspaceLockStatus {
     enabled: bool,
     timeout_minutes: u32,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkspaceInfo {
+    path: String,
+    config_version: u8,
+    document_count: usize,
+    attachment_count: usize,
+    attachment_bytes: u64,
+    index_bytes: u64,
+}
+
+fn directory_file_stats(path: &Path) -> Result<(usize, u64)> {
+    if !path.exists() {
+        return Ok((0, 0));
+    }
+    let mut count = 0;
+    let mut bytes = 0;
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            let (child_count, child_bytes) = directory_file_stats(&path)?;
+            count += child_count;
+            bytes += child_bytes;
+        } else {
+            count += 1;
+            bytes += entry.metadata()?.len();
+        }
+    }
+    Ok((count, bytes))
 }
 
 fn lock_verifier(salt: &str, password: &str) -> String {
@@ -154,8 +187,47 @@ pub fn autostart_enabled(app: AppHandle) -> Result<bool> {
         .is_enabled()
         .map_err(|error| SonataError::WorkspaceUnavailable(error.to_string()))
 }
+
+fn is_development_executable(path: &Path) -> bool {
+    // `tauri dev` produces an executable under Cargo's target directory. If
+    // it is registered for login startup, Windows launches it after the Vite
+    // server has stopped, leaving the panel on a "can't connect" page.
+    path.components()
+        .any(|component| component.as_os_str() == "target")
+}
+
+#[cfg(test)]
+mod autostart_tests {
+    use super::is_development_executable;
+    use std::path::Path;
+
+    #[test]
+    fn cargo_target_executables_are_not_eligible_for_login_startup() {
+        assert!(is_development_executable(Path::new(
+            r"C:\work\sonata\src-tauri\target\debug\sonata.exe"
+        )));
+    }
+
+    #[test]
+    fn installed_executable_is_eligible_for_login_startup() {
+        assert!(!is_development_executable(Path::new(
+            r"C:\Program Files\Sonata\sonata.exe"
+        )));
+    }
+}
+
 #[tauri::command]
 pub fn set_autostart(enabled: bool, app: AppHandle) -> Result<()> {
+    if enabled
+        && std::env::current_exe()
+            .ok()
+            .is_some_and(|path| is_development_executable(&path))
+    {
+        return Err(SonataError::WorkspaceUnavailable(
+            "Launch-at-login is available only in the installed Sonata release. Install the Windows setup package, then enable it there.".into(),
+        ));
+    }
+
     let launcher = app.autolaunch();
     if enabled {
         launcher.enable()
@@ -198,6 +270,35 @@ pub fn open_workspace(path: String, state: State<AppState>) -> Result<()> {
         .lock()
         .map_err(|_| SonataError::WorkspaceUnavailable("state lock failed".into()))? =
         Some(Session { workspace, index });
+    Ok(())
+}
+#[tauri::command]
+pub fn workspace_info(state: State<AppState>) -> Result<WorkspaceInfo> {
+    let guard = session(&state)?;
+    let session = guard.as_ref().unwrap();
+    let (attachment_count, attachment_bytes) =
+        directory_file_stats(&session.workspace.root.join("attachments"))?;
+    let index_path = session.workspace.db_path();
+    Ok(WorkspaceInfo {
+        path: session.workspace.root.display().to_string(),
+        config_version: session.workspace.config.version,
+        document_count: session.index.list(&Default::default())?.len(),
+        attachment_count,
+        attachment_bytes,
+        index_bytes: index_path.metadata().map(|metadata| metadata.len()).unwrap_or(0),
+    })
+}
+#[tauri::command]
+pub fn reset_workspace(state: State<AppState>) -> Result<()> {
+    let mut guard = session(&state)?;
+    let root = guard.as_ref().unwrap().workspace.root.clone();
+    // SQLite keeps the index file open on Windows, so drop the active session before
+    // erasing the workspace and install a freshly indexed empty session afterwards.
+    *guard = None;
+    let workspace = Workspace::reset(root)?;
+    let index = Index::open(&workspace.db_path())?;
+    indexer::rebuild(&workspace, &index)?;
+    *guard = Some(Session { workspace, index });
     Ok(())
 }
 #[tauri::command]
@@ -272,6 +373,9 @@ pub fn create_document(
     let kind = input.document_type.unwrap_or_default();
     let title = input.title.unwrap_or_else(|| "Untitled".into());
     let path = s.workspace.document_path(&kind, &title);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let relative = path
         .strip_prefix(&s.workspace.root)
         .map_err(|_| SonataError::PermissionDenied("outside workspace".into()))?
@@ -338,6 +442,36 @@ pub fn update_document(
     s.index.upsert(&document)?;
     app.emit("document:changed", &document.id).ok();
     Ok(document)
+}
+/// Persists the visible list's exact order without treating a rearrangement as an edit to
+/// the document content. The Markdown `order` field is authoritative; SQLite merely indexes it.
+#[tauri::command]
+pub fn reorder_documents(ids: Vec<String>, state: State<AppState>, app: AppHandle) -> Result<()> {
+    if ids.len() != ids.iter().collect::<HashSet<_>>().len() {
+        return Err(SonataError::InvalidMetadata("document order contains duplicates".into()));
+    }
+    let mut guard = session(&state)?;
+    let s = guard.as_mut().unwrap();
+    // Read and validate every target before touching the workspace. This prevents a stale
+    // filtered list from producing a partial rearrangement when an item has disappeared.
+    let mut documents = ids
+        .iter()
+        .map(|id| {
+            let indexed = s.index.get(id)?;
+            let path = s.workspace.root.join(&indexed.path);
+            let document = markdown::parse(&indexed.path, &fs::read_to_string(path)?)?;
+            Ok((indexed.path, document))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    for (position, (path, document)) in documents.iter_mut().enumerate() {
+        document.order = Some(position as i64);
+        let raw = markdown::serialize(document)?;
+        markdown::atomic_write(&s.workspace.root.join(path), &raw)?;
+        document.content_hash = Some(markdown::hash(&raw));
+        s.index.upsert(document)?;
+    }
+    app.emit("workspace:index-updated", ()).ok();
+    Ok(())
 }
 #[tauri::command]
 pub fn acknowledge_document_attention(
@@ -442,6 +576,31 @@ fn trash_doc(s: &mut Session, id: &str) -> Result<()> {
     s.index.remove_path(&doc.path)
 }
 
+/// Restores a trashed document to its type folder (or back to Archive when it was archived
+/// before being trashed). Trash is intentionally outside the index, so find the canonical
+/// Markdown file by id rather than trusting its original filename.
+fn restore_from_trash_doc(s: &mut Session, id: &str) -> Result<()> {
+    let trash = s.workspace.root.join(".trash");
+    if trash.exists() {
+        for entry in fs::read_dir(&trash)? {
+            let path = entry?.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("md") {
+                continue;
+            }
+            let relative = s.workspace.relative(&path)?;
+            let mut doc = markdown::parse(&relative, &fs::read_to_string(&path)?)?;
+            if doc.id != id {
+                continue;
+            }
+            let folder = if doc.archived { "archive" } else { doc.document_type.folder() };
+            doc.path = relocate_file(s, &doc, folder)?;
+            write_raw(s, &mut doc)?;
+            return Ok(());
+        }
+    }
+    Err(SonataError::InvalidMetadata("trashed document was not found".into()))
+}
+
 /// Converts `id` to `kind`: rewrites the frontmatter, drops the metadata the target type
 /// does not support, and moves the file into that type's folder.
 ///
@@ -507,6 +666,11 @@ pub fn unarchive_document(id: String, state: State<AppState>) -> Result<()> {
 pub fn move_document_to_trash(id: String, state: State<AppState>) -> Result<()> {
     let mut guard = session(&state)?;
     trash_doc(guard.as_mut().unwrap(), &id)
+}
+#[tauri::command]
+pub fn restore_document_from_trash(id: String, state: State<AppState>) -> Result<()> {
+    let mut guard = session(&state)?;
+    restore_from_trash_doc(guard.as_mut().unwrap(), &id)
 }
 #[tauri::command]
 pub fn set_document_type(
@@ -705,7 +869,7 @@ pub fn reveal_attachment_in_explorer(path: String, state: State<AppState>) -> Re
         ))
     }
 }
-/// Splits shorthand capture text ("task Buy milk #errand @due:tomorrow") into a
+/// Splits shorthand capture text ("task Buy milk :: Investigate #errand @priority:urgent") into a
 /// `DocumentInput`. The parsed tags belong on the *input* rather than on the document
 /// `create_document` hands back: setting them afterwards only decorated the value returned
 /// to the caller, so they never reached the Markdown frontmatter or the index and vanished
@@ -721,39 +885,68 @@ fn capture_input(text: &str) -> DocumentInput {
     } else {
         text.into()
     };
-    // Normalized the same way tags entered through the tag chip input are, so
-    // "#Errand" and "#errand" stay one tag rather than two near-duplicates.
+    let (title_source, body_source) = rest.split_once("::").unwrap_or((rest.as_str(), ""));
+    let mut priority = None;
+    let mut status = None;
+    let mut stage = None;
+    let mut reminder = None;
     let mut tags: Vec<String> = Vec::new();
-    for word in rest.split_whitespace() {
-        let Some(raw) = word.strip_prefix('#') else {
-            continue;
-        };
-        let tag = markdown::normalize_tag(raw);
-        if !tag.is_empty() && !tags.contains(&tag) {
-            tags.push(tag);
-        }
-    }
-    let title = rest
-        .split_whitespace()
-        .filter(|w| !w.starts_with('#') && !w.starts_with("@due:"))
-        .collect::<Vec<_>>()
-        .join(" ");
+    let mut clean = |source: &str| {
+        source
+            .split_whitespace()
+            .filter_map(|word| {
+                if let Some(raw) = word.strip_prefix('#') {
+                    let tag = markdown::normalize_tag(raw);
+                    if !tag.is_empty() && !tags.contains(&tag) {
+                        tags.push(tag);
+                    }
+                    return None;
+                }
+                if let Some(value) = word.strip_prefix("@priority:") {
+                    priority = serde_yaml::from_str::<Priority>(&value.to_ascii_lowercase()).ok();
+                    return None;
+                }
+                if let Some(value) = word.strip_prefix("@status:") {
+                    status = serde_yaml::from_str::<TaskStatus>(&value.replace('-', "_").to_ascii_lowercase()).ok();
+                    return None;
+                }
+                if let Some(value) = word.strip_prefix("@stage:") {
+                    stage = serde_yaml::from_str::<IdeaStage>(&value.replace('-', "_").to_ascii_lowercase()).ok();
+                    return None;
+                }
+                if let Some(value) = word.strip_prefix("@reminder:") {
+                    if !value.is_empty() {
+                        reminder = Some(value.to_string());
+                    }
+                    return None;
+                }
+                if word.starts_with("@due:") {
+                    return None;
+                }
+                Some(word)
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
+    };
+    let title = clean(title_source);
+    let body = clean(body_source);
     let due = rest
         .split_whitespace()
-        .find_map(|w| w.strip_prefix("@due:").map(markdown::resolve_due_keyword));
+        .find_map(|word| word.strip_prefix("@due:").map(markdown::resolve_due_keyword));
     DocumentInput {
         document_type: kind,
-        title: Some(if title.is_empty() {
-            "Untitled".into()
-        } else {
-            title
-        }),
-        body: Some(String::new()),
+        title: Some(if title.is_empty() { "Untitled".into() } else { title }),
+        body: Some(body),
         tags: Some(tags),
+        status,
+        priority,
+        stage,
         due,
+        reminder,
         ..Default::default()
     }
 }
+
 fn read_raw(s: &Session, id: &str) -> Result<SonataDocument> {
     let meta = s.index.get(id)?;
     let mut doc = markdown::parse(
@@ -860,6 +1053,20 @@ mod archive_tests {
             .join(".trash")
             .join("some-link.md")
             .exists());
+    }
+
+    #[test]
+    fn restoring_a_trashed_document_reindexes_it_in_its_type_folder() {
+        let (_dir, mut s) = make_session();
+        let doc = seed_doc(&mut s, DocumentType::Bookmark, "Some link");
+
+        trash_doc(&mut s, &doc.id).unwrap();
+        restore_from_trash_doc(&mut s, &doc.id).unwrap();
+
+        let restored = read_raw(&s, &doc.id).unwrap();
+        assert_eq!(restored.id, doc.id);
+        assert!(restored.path.starts_with("bookmarks/"));
+        assert!(!s.workspace.root.join(".trash").join("some-link.md").exists());
     }
 }
 
@@ -1081,6 +1288,12 @@ mod capture_tests {
             .to_string()
     }
 
+    fn tomorrow() -> String {
+        (chrono::Local::now().date_naive() + chrono::Days::new(1))
+            .format("%Y-%m-%d")
+            .to_string()
+    }
+
     #[test]
     fn tags_land_on_the_input_so_they_get_written_to_the_document() {
         let input = capture_input("Buy milk #errand #home");
@@ -1102,6 +1315,26 @@ mod capture_tests {
         assert_eq!(input.title.as_deref(), Some("Renew passport"));
         assert_eq!(input.tags, Some(vec!["admin".into()]));
         assert_eq!(input.due, Some(today()));
+    }
+
+    #[test]
+    fn shorthand_can_capture_body_and_metadata() {
+        let input = capture_input("task Fix bug :: Check logs #work @priority:urgent @status:in_progress @due:tomorrow");
+        assert_eq!(input.title.as_deref(), Some("Fix bug"));
+        assert_eq!(input.body.as_deref(), Some("Check logs"));
+        assert_eq!(input.tags, Some(vec!["work".into()]));
+        assert_eq!(input.priority, Some(Priority::Urgent));
+        assert_eq!(input.status, Some(TaskStatus::InProgress));
+        assert_eq!(input.due, Some(tomorrow()));
+    }
+
+    #[test]
+    fn shorthand_stage_and_reminder_are_removed_from_content() {
+        let input = capture_input("idea Plan launch :: Draft outline @stage:developing @reminder:2026-09-10T09:30");
+        assert_eq!(input.title.as_deref(), Some("Plan launch"));
+        assert_eq!(input.body.as_deref(), Some("Draft outline"));
+        assert_eq!(input.stage, Some(IdeaStage::Developing));
+        assert_eq!(input.reminder.as_deref(), Some("2026-09-10T09:30"));
     }
 
     #[test]

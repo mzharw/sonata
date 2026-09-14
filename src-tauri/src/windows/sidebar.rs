@@ -51,6 +51,9 @@ pub struct SidebarTransition {
     pub auto_hide: bool,
     pub hover_delay: Duration,
     pub pause_hover_fullscreen: bool,
+    /// A shortcut reveal must stay visible until the pointer reaches the panel.
+    /// This prevents auto-hide from racing the user's trip from another app.
+    pub awaiting_panel_reentry: bool,
 }
 
 /// Physical-pixel panel geometry for one monitor.
@@ -163,6 +166,18 @@ pub fn reveal(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Reveals the panel from the global shortcut. Unlike an edge-hover reveal,
+/// the pointer may still be in another application, so auto-hide must wait for
+/// the pointer to enter Sonata before starting its leave timer.
+pub fn reveal_from_shortcut(app: &AppHandle) -> tauri::Result<()> {
+    {
+        let sidebar = app.state::<SidebarState>();
+        let mut state = sidebar.0.lock().expect("sidebar state lock");
+        state.awaiting_panel_reentry = true;
+    }
+    reveal(app)
+}
+
 pub fn conceal(app: &AppHandle) -> tauri::Result<()> {
     let main = main_window(app)?;
     let (right, top, _) = primary_monitor_area(app)?;
@@ -173,6 +188,7 @@ pub fn conceal(app: &AppHandle) -> tauri::Result<()> {
             return Ok(());
         }
         state.is_open = false;
+        state.awaiting_panel_reentry = false;
         state.generation += 1;
         state.generation
     };
@@ -365,9 +381,14 @@ fn start_windows_edge_monitor(app: AppHandle) {
             // the pointer is still visually at the right edge.  Cursor
             // geometry gives the panel a continuous hit area instead.
             let sidebar = app.state::<SidebarState>();
-            let (is_open, is_resizing, is_picker_open) = {
+            let (is_open, is_resizing, is_picker_open, awaiting_panel_reentry) = {
                 let state = sidebar.0.lock().expect("sidebar state lock");
-                (state.is_open, state.is_resizing, state.is_picker_open)
+                (
+                    state.is_open,
+                    state.is_resizing,
+                    state.is_picker_open,
+                    state.awaiting_panel_reentry,
+                )
             };
             if is_open && auto_hide && !is_resizing {
                 let panel_width = main_window(&app)
@@ -385,6 +406,16 @@ fn start_windows_edge_monitor(app: AppHandle) {
                     // deliberate return to Sonata before auto-hide can resume.
                     waiting_for_panel_reentry = true;
                     left_panel_at = None;
+                } else if awaiting_panel_reentry {
+                    if within_panel {
+                        let sidebar = app.state::<SidebarState>();
+                        if let Ok(mut state) = sidebar.0.lock() {
+                            state.awaiting_panel_reentry = false;
+                        }
+                        left_panel_at = None;
+                    } else {
+                        left_panel_at = None;
+                    }
                 } else if within_panel || in_activation_zone {
                     left_panel_at = None;
                     waiting_for_panel_reentry = false;

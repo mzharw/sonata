@@ -104,6 +104,23 @@ impl Workspace {
         )?;
         Ok(())
     }
+    /// Erases every item inside an existing workspace, then recreates an empty Sonata
+    /// workspace in that same folder. Callers must obtain explicit user confirmation.
+    pub fn reset(root: PathBuf) -> Result<Self> {
+        if !root.is_dir() {
+            return Err(SonataError::WorkspaceUnavailable(root.display().to_string()));
+        }
+        for entry in fs::read_dir(&root)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                fs::remove_dir_all(path)?;
+            } else {
+                fs::remove_file(path)?;
+            }
+        }
+        Self::create(root)
+    }
     pub fn relative(&self, path: &Path) -> Result<String> {
         let canonical_root = self.root.canonicalize()?;
         let canonical_path = path.canonicalize()?;
@@ -143,5 +160,22 @@ mod tests {
         let reopened = Workspace::open(directory.path().to_path_buf()).unwrap();
         assert_eq!(reopened.config.folders.notes, "notes");
         assert_eq!(reopened.config.lock.unwrap().timeout_minutes, 20);
+    }
+
+    #[test]
+    fn reset_removes_all_content_and_recreates_the_workspace() {
+        let directory = tempfile::tempdir().unwrap();
+        let workspace = Workspace::create(directory.path().to_path_buf()).unwrap();
+        fs::write(workspace.root.join("notes/keep.md"), "# Keep").unwrap();
+        fs::write(workspace.root.join("attachments/keep.txt"), "keep").unwrap();
+        fs::create_dir_all(workspace.root.join("personal/nested")).unwrap();
+        fs::write(workspace.root.join("personal/nested/file.txt"), "keep").unwrap();
+        let reset = Workspace::reset(workspace.root).unwrap();
+
+        assert!(!reset.root.join("notes/keep.md").exists());
+        assert!(!reset.root.join("attachments/keep.txt").exists());
+        assert!(!reset.root.join("personal").exists());
+        assert!(reset.root.join(".sonata/config.json").exists());
+        assert!(reset.root.join("inbox").exists());
     }
 }

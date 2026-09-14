@@ -1,4 +1,7 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// Sonata is a desktop application.  In particular, an executable launched by
+// Windows at sign-in must not create a second command-prompt window.  `tauri
+// dev` still writes its diagnostics to the terminal that started it.
+#![cfg_attr(windows, windows_subsystem = "windows")]
 
 #[cfg(feature = "desktop")]
 fn main() {

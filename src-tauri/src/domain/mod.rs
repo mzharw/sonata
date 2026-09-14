@@ -206,6 +206,9 @@ pub struct SonataDocument {
     pub archived: bool,
     #[serde(default)]
     pub pinned: bool,
+    /// A user-controlled list position, persisted in Markdown alongside the document.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<TaskStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -369,6 +372,7 @@ mod spec_tests {
             updated: "2026-01-01T00:00:00+00:00".into(),
             archived: false,
             pinned: false,
+            order: None,
             status: Some(TaskStatus::InProgress),
             priority: Some(Priority::High),
             stage: Some(IdeaStage::Developing),

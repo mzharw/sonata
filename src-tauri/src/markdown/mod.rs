@@ -18,6 +18,7 @@ const KNOWN: &[&str] = &[
     "updated",
     "archived",
     "pinned",
+    "order",
     "status",
     "stage",
     "priority",
@@ -134,6 +135,9 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         .get(Value::String("pinned".into()))
         .and_then(Value::as_bool)
         .unwrap_or(false);
+    let order = map
+        .get(Value::String("order".into()))
+        .and_then(Value::as_i64);
     let status = get("status").and_then(|v| serde_yaml::from_str(&v).ok());
     let priority = get("priority").and_then(|v| serde_yaml::from_str(&v).ok());
     let stage = get("stage").and_then(|v| serde_yaml::from_str::<IdeaStage>(&v).ok());
@@ -165,6 +169,7 @@ pub fn parse(path: &str, raw: &str) -> Result<SonataDocument> {
         updated,
         archived,
         pinned,
+        order,
         status,
         priority,
         stage,
@@ -200,6 +205,7 @@ pub fn new_document(
         updated: timestamp,
         archived: false,
         pinned: false,
+        order: None,
         status: defaults.status,
         priority: defaults.priority,
         stage: defaults.stage,
@@ -239,6 +245,9 @@ pub fn serialize(document: &SonataDocument) -> Result<String> {
     put(&mut map, "updated", Value::String(document.updated.clone()));
     put(&mut map, "archived", Value::Bool(document.archived));
     put(&mut map, "pinned", Value::Bool(document.pinned));
+    if let Some(order) = document.order {
+        put(&mut map, "order", Value::Number(order.into()));
+    }
     if let Some(v) = &document.status {
         put(
             &mut map,
@@ -369,6 +378,13 @@ mod tests {
         let doc = parse("ideas/hello.md", raw).unwrap();
         assert_eq!(doc.stage, Some(IdeaStage::Developing));
         assert!(serialize(&doc).unwrap().contains("stage: developing"));
+    }
+    #[test]
+    fn manual_order_round_trips_in_frontmatter() {
+        let raw = "---\nid: 01ABC\ntype: note\ntitle: Hello\norder: 7\n---\n\nbody";
+        let doc = parse("notes/hello.md", raw).unwrap();
+        assert_eq!(doc.order, Some(7));
+        assert!(serialize(&doc).unwrap().contains("order: 7"));
     }
     /// Guards the fixed key order. `stage` is the idea-type analogue of `status`, so a
     /// reader scanning frontmatter finds the lifecycle field in the same place either way.

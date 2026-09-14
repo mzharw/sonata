@@ -194,7 +194,7 @@ pub fn apply_panel_shortcut(app: &AppHandle, next: Option<&str>) -> Result<()> {
                     let _ = if open {
                         crate::windows::sidebar::conceal(app)
                     } else {
-                        crate::windows::sidebar::reveal(app)
+                        crate::windows::sidebar::reveal_from_shortcut(app)
                     };
                 }
             })

@@ -4,6 +4,15 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Attachment, DocumentSummary, DocumentType, SearchQuery, SonataDocument } from "../types/domain";
 import type { Preferences } from "./preferences";
 
+export type WorkspaceInfo = {
+  path: string;
+  configVersion: number;
+  documentCount: number;
+  attachmentCount: number;
+  attachmentBytes: number;
+  indexBytes: number;
+};
+
 async function setSidebarPickerOpen(pickerOpen: boolean) {
   try {
     await invoke<void>("set_sidebar_picker_open", { pickerOpen });
@@ -35,12 +44,14 @@ export const native = {
   readDocument: (id: string) => invoke<SonataDocument>("read_document", { id }),
   createDocument: (input: Partial<SonataDocument>) => invoke<SonataDocument>("create_document", { input }),
   updateDocument: (document: SonataDocument, expectedHash?: string) => invoke<SonataDocument>("update_document", { document, expectedHash }),
+  reorderDocuments: (ids: string[]) => invoke<void>("reorder_documents", { ids }),
   acknowledgeDocumentAttention: (id: string, due?: string, reminder?: string) =>
     invoke<void>("acknowledge_document_attention", { id, due, reminder }),
   setParent: (childId: string, parentId: string | null) => invoke<void>("set_parent", { childId, parentId }),
   archive: (id: string) => invoke<void>("archive_document", { id }),
   unarchive: (id: string) => invoke<void>("unarchive_document", { id }),
   trash: (id: string) => invoke<void>("move_document_to_trash", { id }),
+  restoreFromTrash: (id: string) => invoke<void>("restore_document_from_trash", { id }),
   /**
    * Converts a document to another type. Rust moves the file into the new type's folder
    * and drops the metadata that type does not support, so the returned document has a new
@@ -68,6 +79,8 @@ export const native = {
   chooseAttachment: () => openWithSidebarFrozen({ multiple: false, title: "Attach file" }),
   chooseCoverImage: () => openWithSidebarFrozen({ multiple: false, title: "Choose cover image", filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg"] }] }),
   rebuild: () => invoke<void>("rebuild_index"),
+  workspaceInfo: () => invoke<WorkspaceInfo>("workspace_info"),
+  resetWorkspace: () => invoke<void>("reset_workspace"),
   chooseWorkspace: async () => {
     const path = await openWithSidebarFrozen({ directory: true, multiple: false, title: "Choose Sonata workspace" });
     if (path !== null) await invoke<void>("open_workspace", { path });
