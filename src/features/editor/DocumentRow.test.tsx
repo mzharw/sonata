@@ -68,6 +68,56 @@ describe("the row's leading affordance", () => {
 });
 
 describe("the row context menu", () => {
+  it("offers an entry point into bulk selection", () => {
+    const selectForBulk = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ul><DocumentRow doc={summary()} isActive={false} onSelectForBulk={selectForBulk} onAcknowledge={() => {}} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} /></ul>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByText("Sort me out"));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Select this document" }));
+    expect(selectForBulk).toHaveBeenCalledWith("01ABC");
+  });
+
+  it("starts bulk selection with Shift+right-click", () => {
+    const selectForBulk = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ul><DocumentRow doc={summary()} isActive={false} onSelectForBulk={selectForBulk} onAcknowledge={() => {}} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} /></ul>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.contextMenu(screen.getByText("Sort me out"), { shiftKey: true });
+    expect(selectForBulk).toHaveBeenCalledWith("01ABC");
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  it("starts bulk selection with Shift+click", () => {
+    const selectForBulk = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ul><DocumentRow doc={summary()} isActive={false} onSelectForBulk={selectForBulk} onAcknowledge={() => {}} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} /></ul>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Sort me out"), { shiftKey: true });
+    expect(selectForBulk).toHaveBeenCalledWith("01ABC");
+  });
+
+  it("deselects an already-selected row with Shift+click", () => {
+    const toggleBulkSelection = vi.fn();
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <ul><DocumentRow doc={summary()} isActive={false} isSelected onSelectForBulk={vi.fn()} onToggleBulkSelection={toggleBulkSelection} onAcknowledge={() => {}} onToggleComplete={() => {}} onTogglePin={() => {}} onUpdateStatus={() => {}} /></ul>
+      </QueryClientProvider>,
+    );
+
+    fireEvent.click(screen.getByText("Sort me out"), { shiftKey: true });
+    expect(toggleBulkSelection).toHaveBeenCalledWith("01ABC");
+  });
+
   it("offers the complete document action set", () => {
     mount({ type: "task" });
     fireEvent.contextMenu(screen.getByText("Sort me out"));
@@ -104,7 +154,7 @@ describe("the row context menu", () => {
 });
 
 describe("the row's meta chips", () => {
-  it("keeps priority with tags when no due date or reminder is set", () => {
+  it("keeps priority compact when no due date or reminder is set", () => {
     mount({ type: "task", tags: ["feature"], priority: "urgent" });
     expect(screen.getByText("urgent").className).not.toContain("separated");
   });
@@ -126,6 +176,17 @@ describe("the row's meta chips", () => {
     expect(document.querySelector('[title="Due 2026-02-01"]')).toBeNull();
   });
 
+  it("shows a reminder countdown in the row while retaining its exact time in the tooltip", () => {
+    mount({ type: "task", reminder: "2050-01-01T09:00" });
+    expect(screen.getByText(/^in \d+d$/)).toBeTruthy();
+    expect(screen.getByRole("tooltip", { name: /Reminder.*2050/ })).toBeTruthy();
+  });
+
+  it("hides a completed task's reminder from the browse row", () => {
+    mount({ type: "task", status: "completed", reminder: "2050-01-01T09:00" });
+    expect(screen.queryByRole("tooltip", { name: /Reminder/ })).toBeNull();
+  });
+
   it("shows a task its progress and due date", () => {
     mount({ type: "task", due: "2026-02-01", childCount: 3, completedChildCount: 1 });
     expect(screen.getByText("1/3")).toBeTruthy();
@@ -137,7 +198,7 @@ describe("the row's meta chips", () => {
   // rather than persisted note metadata, so it remains available alongside tags.
   it("shows a note its tags and last edit, but no task metadata", () => {
     mount({ type: "note", tags: ["work"], updated: new Date().toISOString(), due: "2026-02-01", priority: "high" });
-    expect(screen.getByText("#work")).toBeTruthy();
+    expect(screen.getByText("#work").parentElement?.classList.contains("doc-tags-inline")).toBe(true);
     expect(screen.getByText("Edited just now")).toBeTruthy();
     expect(screen.queryByTitle("2026-02-01")).toBeNull();
     expect(screen.queryByText(/high/)).toBeNull();

@@ -18,6 +18,7 @@ interface Ui {
   tag?: string;
   expandedId?: string;
   fullScreenId?: string;
+  fullScreenIsNew?: boolean;
   palette: boolean;
   filters: Filters;
   confirm?: ConfirmRequest;
@@ -26,7 +27,7 @@ interface Ui {
   previewedId?: string;
   setView: (view: View, tag?: string) => void;
   expand: (id?: string) => void;
-  openFullScreen: (id?: string) => void;
+  openFullScreen: (id?: string, isNew?: boolean) => void;
   setPalette: (palette: boolean) => void;
   setFilters: (filters: Partial<Filters>) => void;
   resetFilters: () => void;
@@ -46,7 +47,7 @@ export const useUi = create<Ui>((set) => ({
   filters: NO_FILTERS,
   setView: (view, tag) => set({ view, tag, expandedId: undefined }),
   expand: (expandedId) => set({ expandedId }),
-  openFullScreen: (fullScreenId) => set({ fullScreenId, expandedId: undefined }),
+  openFullScreen: (fullScreenId, isNew = false) => set({ fullScreenId, fullScreenIsNew: fullScreenId ? isNew : undefined, expandedId: undefined }),
   setPalette: (palette) => set({ palette }),
   setFilters: (filters) => set((state) => ({ filters: { ...state.filters, ...filters } })),
   resetFilters: () => set({ filters: NO_FILTERS }),

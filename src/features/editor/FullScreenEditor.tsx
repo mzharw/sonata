@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useUi } from "../../stores/ui";
 import { useDocumentEditor } from "../../hooks/useDocumentEditor";
 import { DocumentMetaBar } from "../../components/DocumentMetaBar";
@@ -18,9 +19,13 @@ import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTime
 
 export function FullScreenEditor({ id }: { id: string }) {
   const ui = useUi();
-  const { doc: full, setDoc: setFull, replaceDoc: replaceFull, status: saveStatus, save } = useDocumentEditor(id);
+  const qc = useQueryClient();
+  const isNew = useUi((state) => state.fullScreenIsNew === true);
+  const { doc: full, setDoc: setFull, replaceDoc: replaceFull, status: saveStatus, save, isDirty } = useDocumentEditor(id, { autoSave: false, saveOnUnmount: false });
   const spec = full ? TYPE_SPECS[full.type] : undefined;
   const { convert } = useTypeConversion();
+  const [leaving, setLeaving] = useState(false);
+  const [leaveTarget, setLeaveTarget] = useState<(() => void) | undefined>();
 
   // Flush any pending edit first: the conversion rewrites the file, and a later autosave
   // holding the pre-conversion path would recreate it at its old location.
@@ -31,6 +36,45 @@ export function FullScreenEditor({ id }: { id: string }) {
   const bodyEditorRef = useRef<MarkdownEditorHandle>(null);
   const [rawActive, setRawActive] = useState(false);
   const attachmentUrls = useAttachmentUrls(full?.body ?? "", full?.cover);
+
+  const finishLeaving = async (discard: boolean, target: () => void) => {
+    if (discard && isNew) {
+      try {
+        await native.trash(id);
+        qc.invalidateQueries({ queryKey: ["documents"] });
+        qc.invalidateQueries({ queryKey: ["tags"] });
+      } catch (error) {
+        console.error("Couldn't discard new document", error);
+        ui.showToast({ message: "Couldn't discard the new note — see console for details" });
+        return;
+      }
+    }
+    target();
+  };
+
+  const requestLeave = (target = () => ui.openFullScreen(undefined)) => {
+    if (!isDirty()) {
+      void finishLeaving(true, target);
+      return;
+    }
+    setLeaveTarget(() => target);
+    setLeaving(true);
+  };
+
+  const saveAndLeave = async () => {
+    if (!leaveTarget) return;
+    const saved = await save();
+    if (saved) {
+      setLeaving(false);
+      await finishLeaving(false, leaveTarget);
+    }
+  };
+
+  const discardAndLeave = () => {
+    if (!leaveTarget) return;
+    setLeaving(false);
+    void finishLeaving(true, leaveTarget);
+  };
 
   const copyNoteContent = async () => {
     try {
@@ -77,19 +121,23 @@ export function FullScreenEditor({ id }: { id: string }) {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") ui.openFullScreen(undefined);
+      if (e.key !== "Escape") return;
+      if (leaving) setLeaving(false);
+      else requestLeave();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [ui]);
+    // The handler intentionally reads the current render's draft state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaving]);
 
   return (
     <div className="fullscreen-editor">
       <div className="fs-topbar">
-        <button className="icon-btn" aria-label="Back to list" onClick={() => ui.openFullScreen(undefined)}><IconArrowLeft /></button>
+        <button className="icon-btn" aria-label="Back to list" onClick={() => requestLeave()}><IconArrowLeft /></button>
         {full ? (
           <div className="fs-title-wrap">
-            <input aria-label="Title" value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} onBlur={() => void save()} />
+            <input aria-label="Title" value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} />
             <IconPencilLine className="editor-title-pen" size={15} aria-hidden="true" />
           </div>
         ) : (
@@ -107,22 +155,21 @@ export function FullScreenEditor({ id }: { id: string }) {
               </div>
             )}
             <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
-            <RelatedDocuments doc={full} onChange={setFull} />
-            {full.type === "task" && <SubtasksPanel id={full.id} onOpen={(target) => { ui.openFullScreen(undefined); ui.expand(target); }} />}
+            <RelatedDocuments doc={full} onChange={setFull} onOpenDocument={(target) => requestLeave(() => { ui.openFullScreen(undefined); ui.expand(target); })} />
+            {full.type === "task" && <SubtasksPanel id={full.id} onOpen={(target) => requestLeave(() => { ui.openFullScreen(undefined); ui.expand(target); })} />}
             <MarkdownEditor
               ref={bodyEditorRef}
               ariaLabel="Note body"
               placeholder="Click to write in Markdown…"
               value={full.body}
               onChange={(body) => setFull({ ...full, body })}
-              onBlur={() => void save()}
               onRawChange={setRawActive}
               attachmentUrls={attachmentUrls}
               onAttach={() => void attachFromBody()}
               onPasteImage={pasteImage}
               onOpenAttachment={revealAttachment}
               onOpenExternal={(url) => void native.openExternal(url)}
-              onOpenDocument={(target) => { ui.openFullScreen(undefined); ui.expand(target); }}
+              onOpenDocument={(target) => requestLeave(() => { ui.openFullScreen(undefined); ui.expand(target); })}
             />
             {spec?.longForm && <BacklinksPanel id={id} />}
           </div>
@@ -168,6 +215,21 @@ export function FullScreenEditor({ id }: { id: string }) {
             )}
           </div>
         </>
+      )}
+      {leaving && (
+        <div className="overlay overlay-center" onMouseDown={() => setLeaving(false)}>
+          <div className="confirm-dialog leave-confirm-dialog" role="alertdialog" aria-modal="true" aria-label="Save changes before leaving" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="leave-confirm-copy">
+              <p>Save changes before leaving?</p>
+              <span>Your unsaved edits will be lost if you don’t save.</span>
+            </div>
+            <div className="confirm-dialog-actions leave-confirm-actions">
+              <button type="button" className="leave-confirm-cancel" onClick={() => setLeaving(false)}>Cancel</button>
+              <button type="button" className="leave-confirm-discard" onClick={discardAndLeave}>Don’t save</button>
+              <button type="button" className="primary leave-confirm-save" autoFocus onClick={() => void saveAndLeave()}>Save changes</button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

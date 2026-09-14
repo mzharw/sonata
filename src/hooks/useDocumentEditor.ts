@@ -8,7 +8,7 @@ export type SaveStatus = "idle" | "saving" | "saved" | "error";
 const AUTOSAVE_DELAY_MS = 800;
 const SAVED_BADGE_MS = 1600;
 
-export function useDocumentEditor(id: string | undefined) {
+export function useDocumentEditor(id: string | undefined, { autoSave = true, saveOnUnmount = true } = {}) {
   const qc = useQueryClient();
   const [doc, setDocState] = useState<SonataDocument | null>(null);
   const [status, setStatus] = useState<SaveStatus>("idle");
@@ -20,7 +20,7 @@ export function useDocumentEditor(id: string | undefined) {
 
   const persist = async () => {
     const current = docRef.current;
-    if (!current || !dirtyRef.current) return;
+    if (!current || !dirtyRef.current) return true;
     dirtyRef.current = false;
     clearTimeout(debounceRef.current);
     setStatus("saving");
@@ -33,10 +33,12 @@ export function useDocumentEditor(id: string | undefined) {
       setStatus("saved");
       clearTimeout(savedBadgeRef.current);
       savedBadgeRef.current = setTimeout(() => setStatus("idle"), SAVED_BADGE_MS);
+      return true;
     } catch (error) {
       console.error("Autosave failed", error);
       dirtyRef.current = true;
       setStatus("error");
+      return false;
     }
   };
 
@@ -58,7 +60,7 @@ export function useDocumentEditor(id: string | undefined) {
       cancelled = true;
       clearTimeout(debounceRef.current);
       clearTimeout(savedBadgeRef.current);
-      void persist();
+      if (saveOnUnmount) void persist();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
@@ -67,7 +69,7 @@ export function useDocumentEditor(id: string | undefined) {
     setDocState(next);
     dirtyRef.current = true;
     clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => void persist(), AUTOSAVE_DELAY_MS);
+    if (autoSave) debounceRef.current = setTimeout(() => void persist(), AUTOSAVE_DELAY_MS);
   };
 
   /**
@@ -85,5 +87,5 @@ export function useDocumentEditor(id: string | undefined) {
     setDocState(next);
   };
 
-  return { doc, setDoc, replaceDoc, status, save: persist };
+  return { doc, setDoc, replaceDoc, status, save: persist, isDirty: () => dirtyRef.current };
 }

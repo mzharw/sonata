@@ -70,7 +70,18 @@ export default function App() {
 
   useEffect(() => {
     const key = (event: KeyboardEvent) => {
-      if (matchesShortcut(event, prefs.shortcuts.search)) {
+      // Escape belongs to the currently focused editor first. Components that use it to
+      // close a suggestion/menu call preventDefault, so this only unfocuses a plain text or
+      // Markdown editing surface once its own escape behavior has had a chance to run.
+      const focused = document.activeElement;
+      const editable = focused instanceof HTMLElement && focused.closest("input, textarea, [contenteditable='true']");
+      if (!event.defaultPrevented && event.key === "Escape" && editable instanceof HTMLElement) {
+        event.preventDefault();
+        editable.blur();
+      } else if (!event.defaultPrevented && !settings && (event.ctrlKey || event.metaKey) && !event.altKey && event.key === ",") {
+        event.preventDefault();
+        setSettings(true);
+      } else if (matchesShortcut(event, prefs.shortcuts.search)) {
         event.preventDefault();
         searchRef.current?.focus();
         searchRef.current?.select();
@@ -81,7 +92,7 @@ export default function App() {
     };
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
-  }, [ui, prefs.shortcuts]);
+  }, [ui, prefs.shortcuts, settings]);
 
   useEffect(() => {
     if (lock.data?.enabled) setLocked(true);
@@ -139,7 +150,7 @@ export default function App() {
         </div>
         <ViewMenu />
         <FilterMenu />
-        <button className="icon-btn" aria-label="Settings" title="Settings" onClick={() => setSettings(true)}><IconSettings size={15} /></button>
+        <button className="icon-btn settings-trigger" aria-label="Open settings" aria-keyshortcuts="Control+, Meta+," title="Settings · Ctrl/Cmd + ," onClick={() => setSettings(true)}><IconSettings size={17} /></button>
       </header>
       {prefs.showTags && <TagChipsBar />}
       <DocumentList search={search} />

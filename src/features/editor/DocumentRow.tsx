@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
 import type { DocumentSummary } from "../../types/domain";
@@ -18,13 +18,13 @@ import { RelatedDocuments } from "../../components/RelatedDocuments";
 import { SubtasksPanel } from "../../components/SubtasksPanel";
 import { useTypeConversion } from "../../hooks/useTypeConversion";
 import { STATUS_OPTIONS } from "../../lib/statusOptions";
-import { stageLabel } from "../../lib/stageOptions";
+import { STAGE_OPTIONS, stageLabel } from "../../lib/stageOptions";
 import { urlDomain } from "../../lib/url";
 import { wordCount } from "../../lib/wordCount";
 import { renderMarkdownPreview } from "../../lib/renderMarkdown";
 import { formatDateTime } from "../../lib/dateTime";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
-import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconMaximize, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown, IconLink, IconExternalLink, IconCalendar, IconBell } from "../../components/icons";
+import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconFullScreenEdit, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown, IconLink, IconExternalLink, IconCalendar, IconBell } from "../../components/icons";
 import type { TaskStatus } from "../../types/domain";
 import type { DocumentAttention } from "../../lib/attention";
 
@@ -48,7 +48,22 @@ function dueMeta(due: string, status: DocumentSummary["status"]) {
   return { label, overdue };
 }
 
-export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleComplete, onTogglePin, onUpdateStatus }: { doc: DocumentSummary; isActive: boolean; attention?: DocumentAttention; onAcknowledge: (doc: DocumentSummary, attention: DocumentAttention) => void; onToggleComplete: (doc: DocumentSummary) => void; onTogglePin: (doc: DocumentSummary) => void; onUpdateStatus: (doc: DocumentSummary, status: TaskStatus | undefined) => void }) {
+/** Compact countdown for the browse row; the tooltip retains the exact time. */
+function reminderMeta(reminder: string) {
+  const at = new Date(reminder).getTime();
+  if (Number.isNaN(at)) return { label: formatDateTime(reminder), overdue: false };
+  const delta = at - Date.now();
+  if (delta <= 0) {
+    const minutes = Math.max(1, Math.floor(-delta / 60_000));
+    return { label: minutes < 60 ? `${minutes}m overdue` : `${Math.floor(minutes / 60)}h overdue`, overdue: true };
+  }
+  if (delta < 60_000) return { label: "Now", overdue: false };
+  if (delta < 3_600_000) return { label: `in ${Math.ceil(delta / 60_000)}m`, overdue: false };
+  if (delta < 86_400_000) return { label: `in ${Math.ceil(delta / 3_600_000)}h`, overdue: false };
+  return { label: `in ${Math.ceil(delta / 86_400_000)}d`, overdue: false };
+}
+
+export function DocumentRow({ doc, isActive, isSelected = false, selectionMode = false, suppressPreview = false, reorderable = false, dragState, suppressActivation = false, onReorderPointerDown, onReorderPointerMove, onReorderPointerUp, onSelectForBulk, onSelectRangeForBulk, onToggleBulkSelection, attention, onAcknowledge, onToggleComplete, onTogglePin, onUpdateStatus }: { doc: DocumentSummary; isActive: boolean; isSelected?: boolean; selectionMode?: boolean; suppressPreview?: boolean; reorderable?: boolean; dragState?: "dragging" | "drop-target"; suppressActivation?: boolean; onReorderPointerDown?: (event: ReactPointerEvent<HTMLLIElement>) => void; onReorderPointerMove?: (event: ReactPointerEvent<HTMLLIElement>) => void; onReorderPointerUp?: (event: ReactPointerEvent<HTMLLIElement>) => void; onSelectForBulk?: (id: string) => void; onSelectRangeForBulk?: (id: string) => void; onToggleBulkSelection?: (id: string) => void; attention?: DocumentAttention; onAcknowledge: (doc: DocumentSummary, attention: DocumentAttention) => void; onToggleComplete: (doc: DocumentSummary) => void; onTogglePin: (doc: DocumentSummary) => void; onUpdateStatus: (doc: DocumentSummary, status: TaskStatus | undefined) => void }) {
   const ui = useUi();
   const qc = useQueryClient();
   const expanded = ui.expandedId === doc.id;
@@ -69,6 +84,8 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   const [rawActive, setRawActive] = useState(false);
   const [headerIsStuck, setHeaderIsStuck] = useState(false);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const suppressRowClick = useRef(false);
   const contextOpen = ui.contextMenu?.kind === "document" && ui.contextMenu.documentId === doc.id;
   const previewActive = ui.previewedId === doc.id;
   const preview = useQuery({ queryKey: ["preview", doc.id], queryFn: () => native.readDocument(doc.id), enabled: previewActive, staleTime: 60_000, gcTime: 30_000 });
@@ -86,7 +103,13 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
     if (ui.previewedId === doc.id) ui.preview(undefined);
   };
 
-  useEffect(() => () => clearTimeout(hoverTimer.current), []);
+  useEffect(() => () => { clearTimeout(hoverTimer.current); clearTimeout(longPressTimer.current); }, []);
+
+  useEffect(() => {
+    if (!suppressPreview) return;
+    clearTimeout(hoverTimer.current);
+    if (ui.previewedId === doc.id) ui.preview(undefined);
+  }, [doc.id, suppressPreview, ui]);
 
   useEffect(() => {
     if (!contextOpen) return;
@@ -195,18 +218,49 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
   return (
     <li
       id={`doc-${doc.id}`}
-      className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${doc.pinned ? " pinned" : ""}${attention ? " needs-attention" : ""}`}
+      data-document-id={doc.id}
+      className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${isSelected ? " is-selected" : ""}${doc.pinned ? " pinned" : ""}${attention ? " needs-attention" : ""}${reorderable ? " reorderable" : ""}${dragState ? ` ${dragState}` : ""}`}
+      onPointerDown={onReorderPointerDown}
+      onPointerMove={onReorderPointerMove}
+      onPointerUp={onReorderPointerUp}
+      onPointerCancel={onReorderPointerUp}
       // The preview sits below `.doc-row`. Keeping hover ownership on the whole list item
       // prevents a pointer moving into that preview from cancelling it, collapsing the card,
       // and then accidentally activating the next row in a long list.
-      onMouseEnter={() => { if (!expanded) startPreviewTimer(); }}
+      onMouseEnter={() => { if (!expanded && !suppressPreview) startPreviewTimer(); }}
       onMouseLeave={cancelPreview}
     >
       {expanded && <span ref={headerSentinelRef} className="doc-header-sentinel" aria-hidden="true" />}
       <div
         className={`doc-row${headerIsStuck ? " is-sticky" : ""}`}
-        onClick={() => {
+        onPointerDown={(event) => {
+          if (reorderable) return;
+          if (!onSelectForBulk || (event.target as Element).closest("button, input, textarea, select, a")) return;
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = setTimeout(() => {
+            suppressRowClick.current = true;
+            cancelPreview();
+            onSelectForBulk(doc.id);
+          }, 500);
+        }}
+        onPointerUp={() => clearTimeout(longPressTimer.current)}
+        onPointerCancel={() => clearTimeout(longPressTimer.current)}
+        onClick={(event) => {
+          if (suppressActivation) return;
+          if (suppressRowClick.current) {
+            suppressRowClick.current = false;
+            return;
+          }
           cancelPreview();
+          if (event.shiftKey && onSelectForBulk) {
+            if (selectionMode && onSelectRangeForBulk) onSelectRangeForBulk(doc.id);
+            else onSelectForBulk(doc.id);
+            return;
+          }
+          if (selectionMode && onToggleBulkSelection) {
+            onToggleBulkSelection(doc.id);
+            return;
+          }
           if (attention) onAcknowledge(doc, attention);
           ui.expand(expanded ? undefined : doc.id);
         }}
@@ -214,9 +268,15 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
           event.preventDefault();
           event.stopPropagation();
           cancelPreview();
+          if (event.shiftKey && onSelectForBulk) {
+            if (selectionMode && onSelectRangeForBulk) onSelectRangeForBulk(doc.id);
+            else onSelectForBulk(doc.id);
+            return;
+          }
           ui.openContextMenu({ kind: "document", documentId: doc.id });
         }}
       >
+        {reorderable && <span className="doc-drag-handle" aria-hidden="true" title="Drag to reorder" />}
         {spec.affordance === "checkbox" ? (
           <button className="check" aria-label={doc.status === "completed" ? "Mark as todo" : "Mark as completed"} title={doc.status === "completed" ? "Mark as todo" : "Mark as completed"} onClick={(e) => { e.stopPropagation(); onToggleComplete(doc); }}>
             {doc.status === "completed" ? <IconStatusDone /> : <IconStatusTodo />}
@@ -233,6 +293,8 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
             const showStatus = doc.status && doc.status !== "todo" && !(spec.affordance === "checkbox" && doc.status === "completed");
             const statusMeta = showStatus ? STATUS_OPTIONS.find((o) => o.value === doc.status) : undefined;
             const StatusIcon = statusMeta?.icon;
+            const stageMeta = doc.stage ? STAGE_OPTIONS.find((o) => o.value === doc.stage) : undefined;
+            const StageIcon = stageMeta?.icon;
             const domain = doc.bookmark?.url ? urlDomain(doc.bookmark.url) : undefined;
             // A single date is the natural break between descriptive chips and the
             // trailing priority signal. When both schedule chips are present, keeping
@@ -246,7 +308,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
                 </span>
               ) : null,
               stage: doc.stage ? (
-                <span className={`stage-inline stage-${doc.stage}`}>{stageLabel(doc.stage)}</span>
+                <span className={`stage-inline stage-${doc.stage}`}>{StageIcon && <StageIcon size={11} fill="currentColor" />} {stageLabel(doc.stage)}</span>
               ) : null,
               domain: domain ? (
                 <span className="domain-inline" title={doc.bookmark?.url}>
@@ -265,7 +327,12 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
                 const { label, overdue } = dueMeta(doc.due, doc.status);
                 return <Tooltip content={`Due ${doc.due}`}><span className={`due-inline${overdue ? " overdue" : ""}`}><IconCalendar size={11} /> {label}</span></Tooltip>;
               })() : null,
-              reminder: doc.reminder ? <Tooltip content={`Reminder ${formatDateTime(doc.reminder)}`}><span className="reminder-inline"><IconBell size={11} /> {formatDateTime(doc.reminder)}</span></Tooltip> : null,
+              // A completed or cancelled task no longer needs an active reminder in
+              // the browse row; its saved value remains available in the editor.
+              reminder: doc.reminder && doc.status !== "completed" && doc.status !== "cancelled" ? (() => {
+                const { label, overdue } = reminderMeta(doc.reminder);
+                return <Tooltip content={`Reminder ${formatDateTime(doc.reminder)}`}><span className={`reminder-inline${overdue ? " overdue" : ""}`}><IconBell size={11} /> {label}</span></Tooltip>;
+              })() : null,
               // Children keep pointing at a converted parent by design, so the count can
               // be non-zero for a type that has no subtasks — the spec decides, not the count.
               progress: doc.childCount > 0 ? (
@@ -289,13 +356,22 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
               })(),
             };
             const visible = spec.rowChips.filter((chip) => chips[chip] !== null);
-            if (visible.length === 0) return null;
+            // Priority is the quickest scan signal, so it leads the non-tag
+            // metadata rather than competing with the trailing schedule details.
+            const metadata = visible.filter((chip) => chip !== "tags").sort((a, b) => (a === "priority" ? -1 : b === "priority" ? 1 : 0));
+            const tags = visible.includes("tags") ? chips.tags : null;
+            if (metadata.length === 0 && !tags) return null;
             return (
-              <small>
-                {visible.map((chip) => (
-                  <Fragment key={chip}>{chips[chip]}</Fragment>
-                ))}
-              </small>
+              <>
+                {metadata.length > 0 && (
+                  <small>
+                    {metadata.map((chip) => (
+                      <Fragment key={chip}>{chips[chip]}</Fragment>
+                    ))}
+                  </small>
+                )}
+                {tags && <div className="doc-tags-inline">{tags}</div>}
+              </>
             );
           })()}
         </div>
@@ -381,6 +457,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
       {contextOpen && (
         <div ref={contextMenuRef} className="document-context-menu" role="menu" onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
           <button role="menuitem" type="button" onClick={() => { ui.expand(doc.id); ui.closeContextMenu(); }}>Open</button>
+          {onSelectForBulk && <button role="menuitem" type="button" onClick={() => (isSelected ? onToggleBulkSelection?.(doc.id) : onSelectForBulk(doc.id))}>{isSelected ? "Deselect this document" : "Select this document"}</button>}
           <button role="menuitem" type="button" onClick={() => { onTogglePin(doc); ui.closeContextMenu(); }}>{doc.pinned ? "Unpin" : "Pin"}</button>
           {doc.type === "task" && <button role="menuitem" type="button" onClick={() => { onToggleComplete(doc); ui.closeContextMenu(); }}>{doc.status === "completed" ? "Mark as todo" : "Mark as completed"}</button>}
           {(doc.type === "task" || doc.type === "note") && <button role="menuitem" type="button" onClick={() => void createRelated().catch((error) => { console.error("Couldn't create related document", error); ui.showToast({ message: "Couldn't create related document" }); }).finally(() => ui.closeContextMenu())}>{doc.type === "task" ? "New subtask" : "New related document"}</button>}
@@ -494,7 +571,7 @@ export function DocumentRow({ doc, isActive, attention, onAcknowledge, onToggleC
                   <IconCopy size={15} />
                 </button>
               )}
-              <button className="icon-btn" aria-label="Open in full-screen editor" title="Open in full-screen editor" onClick={() => ui.openFullScreen(doc.id)}><IconMaximize size={15} /></button>
+              <button className="icon-btn" aria-label="Edit in full-screen" title="Edit in full-screen" onClick={() => ui.openFullScreen(doc.id)}><IconFullScreenEdit size={15} /></button>
             </span>
           </div>
           {spec.longForm && <BacklinksPanel id={doc.id} />}
