@@ -108,7 +108,9 @@ impl Workspace {
     /// workspace in that same folder. Callers must obtain explicit user confirmation.
     pub fn reset(root: PathBuf) -> Result<Self> {
         if !root.is_dir() {
-            return Err(SonataError::WorkspaceUnavailable(root.display().to_string()));
+            return Err(SonataError::WorkspaceUnavailable(
+                root.display().to_string(),
+            ));
         }
         for entry in fs::read_dir(&root)? {
             let entry = entry?;

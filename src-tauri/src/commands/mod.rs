@@ -1,6 +1,9 @@
 use crate::{
     db::Index,
-    domain::{DocumentInput, DocumentSummary, DocumentType, IdeaStage, Priority, SearchQuery, SonataDocument, TaskStatus},
+    domain::{
+        DocumentInput, DocumentSummary, DocumentType, IdeaStage, Priority, SearchQuery,
+        SonataDocument, TaskStatus,
+    },
     errors::{Result, SonataError},
     indexer, markdown, relations,
     workspace::{LockConfig, Workspace},
@@ -285,7 +288,10 @@ pub fn workspace_info(state: State<AppState>) -> Result<WorkspaceInfo> {
         document_count: session.index.list(&Default::default())?.len(),
         attachment_count,
         attachment_bytes,
-        index_bytes: index_path.metadata().map(|metadata| metadata.len()).unwrap_or(0),
+        index_bytes: index_path
+            .metadata()
+            .map(|metadata| metadata.len())
+            .unwrap_or(0),
     })
 }
 #[tauri::command]
@@ -448,7 +454,9 @@ pub fn update_document(
 #[tauri::command]
 pub fn reorder_documents(ids: Vec<String>, state: State<AppState>, app: AppHandle) -> Result<()> {
     if ids.len() != ids.iter().collect::<HashSet<_>>().len() {
-        return Err(SonataError::InvalidMetadata("document order contains duplicates".into()));
+        return Err(SonataError::InvalidMetadata(
+            "document order contains duplicates".into(),
+        ));
     }
     let mut guard = session(&state)?;
     let s = guard.as_mut().unwrap();
@@ -592,13 +600,19 @@ fn restore_from_trash_doc(s: &mut Session, id: &str) -> Result<()> {
             if doc.id != id {
                 continue;
             }
-            let folder = if doc.archived { "archive" } else { doc.document_type.folder() };
+            let folder = if doc.archived {
+                "archive"
+            } else {
+                doc.document_type.folder()
+            };
             doc.path = relocate_file(s, &doc, folder)?;
             write_raw(s, &mut doc)?;
             return Ok(());
         }
     }
-    Err(SonataError::InvalidMetadata("trashed document was not found".into()))
+    Err(SonataError::InvalidMetadata(
+        "trashed document was not found".into(),
+    ))
 }
 
 /// Converts `id` to `kind`: rewrites the frontmatter, drops the metadata the target type
@@ -907,11 +921,17 @@ fn capture_input(text: &str) -> DocumentInput {
                     return None;
                 }
                 if let Some(value) = word.strip_prefix("@status:") {
-                    status = serde_yaml::from_str::<TaskStatus>(&value.replace('-', "_").to_ascii_lowercase()).ok();
+                    status = serde_yaml::from_str::<TaskStatus>(
+                        &value.replace('-', "_").to_ascii_lowercase(),
+                    )
+                    .ok();
                     return None;
                 }
                 if let Some(value) = word.strip_prefix("@stage:") {
-                    stage = serde_yaml::from_str::<IdeaStage>(&value.replace('-', "_").to_ascii_lowercase()).ok();
+                    stage = serde_yaml::from_str::<IdeaStage>(
+                        &value.replace('-', "_").to_ascii_lowercase(),
+                    )
+                    .ok();
                     return None;
                 }
                 if let Some(value) = word.strip_prefix("@reminder:") {
@@ -930,12 +950,17 @@ fn capture_input(text: &str) -> DocumentInput {
     };
     let title = clean(title_source);
     let body = clean(body_source);
-    let due = rest
-        .split_whitespace()
-        .find_map(|word| word.strip_prefix("@due:").map(markdown::resolve_due_keyword));
+    let due = rest.split_whitespace().find_map(|word| {
+        word.strip_prefix("@due:")
+            .map(markdown::resolve_due_keyword)
+    });
     DocumentInput {
         document_type: kind,
-        title: Some(if title.is_empty() { "Untitled".into() } else { title }),
+        title: Some(if title.is_empty() {
+            "Untitled".into()
+        } else {
+            title
+        }),
         body: Some(body),
         tags: Some(tags),
         status,
@@ -1066,7 +1091,12 @@ mod archive_tests {
         let restored = read_raw(&s, &doc.id).unwrap();
         assert_eq!(restored.id, doc.id);
         assert!(restored.path.starts_with("bookmarks/"));
-        assert!(!s.workspace.root.join(".trash").join("some-link.md").exists());
+        assert!(!s
+            .workspace
+            .root
+            .join(".trash")
+            .join("some-link.md")
+            .exists());
     }
 }
 
@@ -1319,7 +1349,9 @@ mod capture_tests {
 
     #[test]
     fn shorthand_can_capture_body_and_metadata() {
-        let input = capture_input("task Fix bug :: Check logs #work @priority:urgent @status:in_progress @due:tomorrow");
+        let input = capture_input(
+            "task Fix bug :: Check logs #work @priority:urgent @status:in_progress @due:tomorrow",
+        );
         assert_eq!(input.title.as_deref(), Some("Fix bug"));
         assert_eq!(input.body.as_deref(), Some("Check logs"));
         assert_eq!(input.tags, Some(vec!["work".into()]));
@@ -1330,7 +1362,9 @@ mod capture_tests {
 
     #[test]
     fn shorthand_stage_and_reminder_are_removed_from_content() {
-        let input = capture_input("idea Plan launch :: Draft outline @stage:developing @reminder:2026-09-10T09:30");
+        let input = capture_input(
+            "idea Plan launch :: Draft outline @stage:developing @reminder:2026-09-10T09:30",
+        );
         assert_eq!(input.title.as_deref(), Some("Plan launch"));
         assert_eq!(input.body.as_deref(), Some("Draft outline"));
         assert_eq!(input.stage, Some(IdeaStage::Developing));
