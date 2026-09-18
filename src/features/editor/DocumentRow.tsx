@@ -172,6 +172,27 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
     }
   };
 
+  const attachCoverFromContext = async () => {
+    ui.closeContextMenu();
+    try {
+      if (full) await save();
+      const selected = await native.chooseCoverImage();
+      if (selected === null) return;
+      const sourcePath = Array.isArray(selected) ? selected[0] : selected;
+      if (!sourcePath) return;
+      const source = await native.readDocument(doc.id);
+      const attachment = await native.importAttachment(doc.id, sourcePath);
+      const updated = { ...source, cover: attachment.path };
+      await native.updateDocument(updated, source.contentHash);
+      if (full) setFull(updated);
+      qc.invalidateQueries({ queryKey: ["documents"] });
+      ui.showToast({ message: "Cover image updated" });
+    } catch (error) {
+      console.error("Couldn't attach cover image", error);
+      ui.showToast({ message: "Couldn't attach cover image — see console for details" });
+    }
+  };
+
   const revealAttachment = (path: string) => {
     void native.revealAttachmentInExplorer(path).catch((error: unknown) => {
       console.error("Couldn't reveal attachment", path, error);
@@ -460,6 +481,7 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
       {contextOpen && (
         <div ref={contextMenuRef} className="document-context-menu" role="menu" onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
           <button role="menuitem" type="button" onClick={() => { ui.expand(doc.id); ui.closeContextMenu(); }}>Open</button>
+          <button role="menuitem" type="button" onClick={() => void attachCoverFromContext()}>{full?.cover || doc.cover ? "Change cover image" : "Add cover image"}</button>
           {onSelectForBulk && <button role="menuitem" type="button" onClick={() => (isSelected ? onToggleBulkSelection?.(doc.id) : onSelectForBulk(doc.id))}>{isSelected ? "Deselect this document" : "Select this document"}</button>}
           {onAddToGroup && <div className="context-group-menu"><span>{groups.some((group) => group.documentIds.includes(doc.id)) ? "Move to group" : "Add to group"}</span>{groups.map((group) => { const current = group.documentIds.includes(doc.id); return <button key={group.id} role="menuitem" type="button" disabled={current} aria-disabled={current || undefined} onClick={() => { if (!current) { onAddToGroup(group.id, [doc.id]); ui.closeContextMenu(); } }}>{group.name}{current ? " · Current" : ""}</button>; })}<button role="menuitem" type="button" onClick={() => { const name = window.prompt("New group name"); if (name) onCreateGroup?.(name, [doc.id]); ui.closeContextMenu(); }}>New group…</button></div>}
           {onRemoveFromGroup && groups.some((group) => group.documentIds.includes(doc.id)) && <button role="menuitem" type="button" onClick={() => { onRemoveFromGroup([doc.id]); ui.closeContextMenu(); }}>Remove from group</button>}
@@ -516,7 +538,7 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
         <article className="editor">
           {(spec.longForm || full.cover) && (
             <div className={`note-cover${full.cover ? " has-cover" : ""}`}>
-              {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
+              {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Document cover" />}
               <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
               {full.cover && <button type="button" className="icon-btn note-cover-remove" aria-label="Remove cover image" title="Remove cover image" onClick={(event) => { event.stopPropagation(); setFull({ ...full, cover: undefined }); ui.showToast({ message: "Cover image removed" }); }}><IconTrash size={15} /></button>}
             </div>

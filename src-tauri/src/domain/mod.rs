@@ -110,7 +110,7 @@ const IDEA_SPEC: TypeSpec = TypeSpec {
 const BOOKMARK_SPEC: TypeSpec = TypeSpec {
     folder: "bookmarks",
     keywords: &["bookmark"],
-    fields: &[Field::Url, Field::Tags],
+    fields: &[Field::Url, Field::Tags, Field::Cover],
     defaults: NO_DEFAULTS,
     sort: SortOrder::Created,
 };
@@ -457,7 +457,7 @@ mod spec_tests {
         assert_eq!(doc.acknowledged_reminder, None);
         assert_eq!(doc.parent, None);
         assert!(doc.bookmark.is_none());
-        // Kept: every type accepts tags and links, and notes carry a cover.
+        // Kept: every type accepts tags, links, and cover images.
         assert_eq!(doc.tags, vec!["work".to_string()]);
         assert!(doc.links.is_some());
         assert!(doc.cover.is_some());
@@ -477,7 +477,7 @@ mod spec_tests {
         assert_eq!(doc.acknowledged_due, None);
         assert_eq!(doc.acknowledged_reminder, None);
         assert_eq!(doc.stage, None);
-        assert_eq!(doc.cover, None);
+        assert!(doc.cover.is_some());
     }
 
     #[test]

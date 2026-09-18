@@ -150,7 +150,7 @@ export function FullScreenEditor({ id }: { id: string }) {
           <div className="fs-body">
             {(spec?.longForm || full.cover) && (
               <div className={`note-cover${full.cover ? " has-cover" : ""}`}>
-                {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Note cover" />}
+                {full.cover && attachmentUrls[full.cover] && <img src={attachmentUrls[full.cover]} alt="Document cover" />}
                 <AttachmentButton className="note-cover-attach" doc={full} onChange={setFull} onNotice={(message) => ui.showToast({ message })} />
                 {full.cover && <button type="button" className="icon-btn note-cover-remove" aria-label="Remove cover image" title="Remove cover image" onClick={(event) => { event.stopPropagation(); setFull({ ...full, cover: undefined }); ui.showToast({ message: "Cover image removed" }); }}><IconTrash size={15} /></button>}
               </div>

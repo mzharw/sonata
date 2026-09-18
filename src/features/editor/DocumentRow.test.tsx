@@ -8,7 +8,7 @@ import { useUi } from "../../stores/ui";
 import type { DocumentSummary, DocumentType } from "../../types/domain";
 
 vi.mock("../../lib/native", () => ({
-  native: { tags: vi.fn(), readDocument: vi.fn(), backlinks: vi.fn(), openExternal: vi.fn(), archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), createDocument: vi.fn(), updateDocument: vi.fn() },
+  native: { tags: vi.fn(), readDocument: vi.fn(), backlinks: vi.fn(), openExternal: vi.fn(), archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), createDocument: vi.fn(), updateDocument: vi.fn(), chooseCoverImage: vi.fn(), importAttachment: vi.fn() },
 }));
 
 beforeEach(() => {
