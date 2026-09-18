@@ -19,6 +19,8 @@ export interface Preferences {
   panelShortcut: string | null;
   shortcuts: ShortcutPreferences;
   panelWidth?: number;
+  /** App-local convenience state; never stored in the workspace itself. */
+  lastWorkspace?: string;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {

@@ -11,8 +11,21 @@ use std::{
 pub struct WorkspaceConfig {
     pub version: u8,
     pub folders: Folders,
+    /// Groups are a workspace-level browsing aid. They deliberately do not live in
+    /// Markdown frontmatter: a tag can suggest a group name, but never defines
+    /// membership, and a document is displayed in at most one group section.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<DocumentGroup>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lock: Option<LockConfig>,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocumentGroup {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub document_ids: Vec<String>,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LockConfig {
@@ -41,6 +54,7 @@ impl Default for WorkspaceConfig {
                 bookmarks: "bookmarks".into(),
                 archive: "archive".into(),
             },
+            groups: vec![],
             lock: None,
         }
     }
@@ -162,6 +176,22 @@ mod tests {
         let reopened = Workspace::open(directory.path().to_path_buf()).unwrap();
         assert_eq!(reopened.config.folders.notes, "notes");
         assert_eq!(reopened.config.lock.unwrap().timeout_minutes, 20);
+    }
+
+    #[test]
+    fn groups_round_trip_without_affecting_legacy_workspace_fields() {
+        let directory = tempfile::tempdir().unwrap();
+        let mut workspace = Workspace::create(directory.path().to_path_buf()).unwrap();
+        workspace.config.groups.push(DocumentGroup {
+            id: "01GROUP".into(),
+            name: "Project Aurora".into(),
+            document_ids: vec!["01DOC".into()],
+        });
+        workspace.save_config().unwrap();
+
+        let reopened = Workspace::open(directory.path().to_path_buf()).unwrap();
+        assert_eq!(reopened.config.folders.tasks, "tasks");
+        assert_eq!(reopened.config.groups[0].document_ids, vec!["01DOC"]);
     }
 
     #[test]

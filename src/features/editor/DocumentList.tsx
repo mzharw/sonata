@@ -7,7 +7,7 @@ import { useListKeyboardNav } from "../../hooks/useListKeyboardNav";
 import { DocumentRow } from "./DocumentRow";
 import type { DocumentSummary, TaskStatus } from "../../types/domain";
 import { documentAttention, type DocumentAttention } from "../../lib/attention";
-import { IconArchive, IconBell, IconTrash, IconX } from "../../components/icons";
+import { IconArchive, IconBell, IconChevronDown, IconChevronRight, IconFolder, IconPlus, IconTrash, IconX } from "../../components/icons";
 
 async function toggleComplete(doc: DocumentSummary, qc: QueryClient) {
   const full = await native.readDocument(doc.id);
@@ -40,7 +40,13 @@ export function DocumentList({ search }: { search: string }) {
   const [dragPreview, setDragPreview] = useState<{ title: string; x: number; y: number }>();
   const [suppressActivation, setSuppressActivation] = useState(false);
   const [selectAllPending, setSelectAllPending] = useState(false);
-  const pointerDrag = useRef<{ id: string; startY: number; active: boolean; order: DocumentSummary[]; targetId?: string; previewFrame?: number; x: number; y: number } | undefined>(undefined);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [groupMenuOpen, setGroupMenuOpen] = useState(false);
+  const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const groupMenuRef = useRef<HTMLSpanElement>(null);
+  const pointerDrag = useRef<{ id: string; groupId?: string; startY: number; active: boolean; order: DocumentSummary[]; targetId?: string; previewFrame?: number; x: number; y: number } | undefined>(undefined);
   const { filters } = ui;
   const docs = useQuery({
     queryKey: ["documents", ui.view, ui.tag, search, filters],
@@ -56,10 +62,13 @@ export function DocumentList({ search }: { search: string }) {
         sort: filters.sort,
       }),
   });
+  const groups = useQuery({ queryKey: ["groups"], queryFn: native.groups });
   const ids = useMemo(() => docs.data?.map((d) => d.id) ?? [], [docs.data]);
   const { activeId, clear: clearActive, containerProps } = useListKeyboardNav(ids);
   const selectedDocs = (docs.data ?? []).filter((doc) => selectedIds.has(doc.id));
   const selectionMode = selectedIds.size > 0;
+  const selectedGroupStates = selectedDocs.map((doc) => (groups.data ?? []).some((group) => group.documentIds.includes(doc.id)));
+  const hasGroupMembershipActions = (groups.data?.length ?? 0) > 0 || selectedGroupStates.some(Boolean);
   // A drag acts on the complete default list. Reordering a search or a filtered subset would
   // give it an ambiguous place among the hidden rows, so those views remain read-only.
   const canReorder = ui.view === "all" && !search && activeFilterCount(filters) === 0 && filters.sort === "default" && !selectionMode && !ui.expandedId;
@@ -69,7 +78,7 @@ export function DocumentList({ search }: { search: string }) {
     else setSelectAllPending(true);
   };
 
-  const reorder = (sourceId: string, targetId: string, current: DocumentSummary[]) => {
+  const reorder = (sourceId: string, targetId: string, current: DocumentSummary[], syncDocumentOrder = true) => {
     if (sourceId === targetId) return current;
     const next = [...current];
     const from = next.findIndex((doc) => doc.id === sourceId);
@@ -77,7 +86,7 @@ export function DocumentList({ search }: { search: string }) {
     if (from < 0 || to < 0) return;
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
-    qc.setQueryData(["documents", ui.view, ui.tag, search, filters], next);
+    if (syncDocumentOrder) qc.setQueryData(["documents", ui.view, ui.tag, search, filters], next);
     return next;
   };
 
@@ -91,10 +100,23 @@ export function DocumentList({ search }: { search: string }) {
       });
   };
 
-  const onReorderPointerDown = (doc: DocumentSummary, event: PointerEvent<HTMLLIElement>) => {
+  const saveGroupReorder = (groupId: string, order: DocumentSummary[]) => {
+    void native.reorderGroupDocuments(groupId, order.map((doc) => doc.id))
+      .then(() => qc.invalidateQueries({ queryKey: ["groups"] }))
+      .catch((error: unknown) => {
+        console.error("Couldn't save the group order", error);
+        ui.showToast({ message: "Couldn't save the group order — it has been restored" });
+        qc.invalidateQueries({ queryKey: ["groups"] });
+      });
+  };
+
+  const onReorderPointerDown = (doc: DocumentSummary, event: PointerEvent<HTMLLIElement>, groupId?: string) => {
     if (!(event.target as Element).closest(".doc-drag-handle")) return;
     if ((event.target as Element).closest("button, input, textarea, select, a")) return;
-    pointerDrag.current = { id: doc.id, startY: event.clientY, active: false, order: docs.data ?? [], x: event.clientX, y: event.clientY };
+    const groupOrder = groupId
+      ? (groups.data?.find((group) => group.id === groupId)?.documentIds ?? []).flatMap((id) => docs.data?.find((candidate) => candidate.id === id) ?? [])
+      : docs.data ?? [];
+    pointerDrag.current = { id: doc.id, groupId, startY: event.clientY, active: false, order: groupOrder, x: event.clientX, y: event.clientY };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
 
@@ -119,11 +141,13 @@ export function DocumentList({ search }: { search: string }) {
     }
     const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>("[data-document-id]");
     const targetId = target?.dataset.documentId;
+    const targetGroupId = target?.dataset.reorderGroupId || undefined;
+    if (targetGroupId !== drag.groupId) return;
     if (!targetId || targetId === drag.id) return;
     if (targetId === drag.targetId) return;
     drag.targetId = targetId;
     setDropTargetId(targetId);
-    const next = reorder(drag.id, targetId, drag.order);
+    const next = reorder(drag.id, targetId, drag.order, !drag.groupId);
     if (next) drag.order = next;
   };
 
@@ -139,7 +163,8 @@ export function DocumentList({ search }: { search: string }) {
     if (!drag.active) return;
     setSuppressActivation(true);
     window.setTimeout(() => setSuppressActivation(false), 0);
-    saveReorder(drag.order);
+    if (drag.groupId) saveGroupReorder(drag.groupId, drag.order);
+    else saveReorder(drag.order);
   };
 
   const selectForBulk = (id: string) => {
@@ -177,6 +202,28 @@ export function DocumentList({ search }: { search: string }) {
   const clearBulkSelection = () => {
     setSelectedIds(new Set());
     setSelectionAnchorId(undefined);
+    setGroupMenuOpen(false);
+    setBulkMenuOpen(false);
+    setCreatingGroup(false);
+    setNewGroupName("");
+  };
+
+  const assignToGroup = (groupId: string, documentIds: string[]) => {
+    void native.addDocumentsToGroup(groupId, documentIds)
+      .then(() => { qc.invalidateQueries({ queryKey: ["groups"] }); clearBulkSelection(); setGroupMenuOpen(false); })
+      .catch((error: unknown) => { console.error("Couldn't add documents to group", error); ui.showToast({ message: "Couldn't add documents to group" }); });
+  };
+  const removeFromGroup = (documentIds: string[]) => {
+    void native.removeDocumentsFromGroup(documentIds)
+      .then(() => { qc.invalidateQueries({ queryKey: ["groups"] }); clearBulkSelection(); setGroupMenuOpen(false); })
+      .catch((error: unknown) => { console.error("Couldn't remove documents from group", error); ui.showToast({ message: "Couldn't remove documents from group" }); });
+  };
+  const createGroup = (name: string, documentIds: string[]) => {
+    const cleanName = name.trim().replace(/^#/, "");
+    if (!cleanName) return;
+    void native.createGroup(cleanName, documentIds)
+      .then(() => { qc.invalidateQueries({ queryKey: ["groups"] }); clearBulkSelection(); ui.showToast({ message: `Created group “${cleanName}”` }); })
+      .catch((error: unknown) => { console.error("Couldn't create group", error); ui.showToast({ message: "Couldn't create group" }); });
   };
 
   const runBulk = (successLabel: string, actionLabel: string, action: (id: string) => Promise<void>, undo?: { label: string; action: (id: string) => Promise<void> }) => {
@@ -224,6 +271,22 @@ export function DocumentList({ search }: { search: string }) {
     const timer = window.setInterval(() => setNow(new Date()), 30_000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!groupMenuOpen) return;
+    const closeOnOutsidePointerDown = (event: globalThis.PointerEvent) => {
+      if (!groupMenuRef.current?.contains(event.target as Node)) setGroupMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [groupMenuOpen]);
+
+  useEffect(() => {
+    if (!groupMenuOpen) {
+      setCreatingGroup(false);
+      setNewGroupName("");
+    }
+  }, [groupMenuOpen]);
 
   useEffect(() => {
     const editableTarget = (target: EventTarget | null) => target instanceof Element && Boolean(target.closest("input, textarea, select, [contenteditable='true']"));
@@ -294,6 +357,25 @@ export function DocumentList({ search }: { search: string }) {
   }, [docs.data, ids, selectionMode, selectedDocs, ui]);
 
   useEffect(() => {
+    if (!selectionMode) return;
+    const closeSelectionLayer = (event: globalThis.KeyboardEvent) => {
+      if (event.defaultPrevented || event.key !== "Escape") return;
+      event.preventDefault();
+      if (creatingGroup) {
+        setCreatingGroup(false);
+      } else if (groupMenuOpen) {
+        setGroupMenuOpen(false);
+      } else if (bulkMenuOpen) {
+        setBulkMenuOpen(false);
+      } else {
+        clearBulkSelection();
+      }
+    };
+    document.addEventListener("keydown", closeSelectionLayer);
+    return () => document.removeEventListener("keydown", closeSelectionLayer);
+  }, [selectionMode, creatingGroup, groupMenuOpen, bulkMenuOpen]);
+
+  useEffect(() => {
     if (draggedId) document.documentElement.dataset.listDragging = "true";
     else delete document.documentElement.dataset.listDragging;
     return () => { delete document.documentElement.dataset.listDragging; };
@@ -303,6 +385,22 @@ export function DocumentList({ search }: { search: string }) {
     const state = documentAttention(doc, now);
     return state ? [{ doc, state }] : [];
   });
+  const groupedDocs = useMemo(() => {
+    const byId = new Map((docs.data ?? []).map((doc) => [doc.id, doc]));
+    const claimed = new Set<string>();
+    const sections = (groups.data ?? []).flatMap((group) => {
+      const documents = group.documentIds.flatMap((id) => {
+        const doc = byId.get(id);
+        if (!doc || claimed.has(id)) return [];
+        claimed.add(id);
+        return [doc];
+      });
+      return documents.length ? [{ id: group.id, name: group.name, documents }] : [];
+    });
+    const ungrouped = (docs.data ?? []).filter((doc) => !claimed.has(doc.id));
+    return { sections, ungrouped };
+  }, [docs.data, groups.data]);
+  const renderRow = (doc: DocumentSummary, groupId?: string) => <DocumentRow key={doc.id} doc={doc} isActive={doc.id === activeId} isSelected={selectedIds.has(doc.id)} selectionMode={selectionMode} suppressPreview={shiftSelecting} reorderable={canReorder} reorderGroupId={groupId} dragState={draggedId === doc.id ? "dragging" : dropTargetId === doc.id ? "drop-target" : undefined} suppressActivation={suppressActivation} onReorderPointerDown={(event) => onReorderPointerDown(doc, event, groupId)} onReorderPointerMove={onReorderPointerMove} onReorderPointerUp={onReorderPointerUp} onSelectForBulk={selectForBulk} onSelectRangeForBulk={selectRangeForBulk} onToggleBulkSelection={toggleBulkSelection} attention={documentAttention(doc, now)} onAcknowledge={acknowledge} onToggleComplete={(d) => void toggleComplete(d, qc)} onTogglePin={(d) => void togglePinned(d, qc)} onUpdateStatus={(d, status) => void updateStatus(d, status, qc)} groups={groups.data ?? []} onAddToGroup={assignToGroup} onRemoveFromGroup={removeFromGroup} onCreateGroup={createGroup} />;
 
   const acknowledge = (doc: DocumentSummary, state: DocumentAttention) => {
     void native.acknowledgeDocumentAttention(doc.id, state.due, state.reminder)
@@ -333,6 +431,18 @@ export function DocumentList({ search }: { search: string }) {
     if (event.key === "Escape") {
       if (selectionMode) {
         event.preventDefault();
+        if (creatingGroup) {
+          setCreatingGroup(false);
+          return;
+        }
+        if (groupMenuOpen) {
+          setGroupMenuOpen(false);
+          return;
+        }
+        if (bulkMenuOpen) {
+          setBulkMenuOpen(false);
+          return;
+        }
         clearBulkSelection();
         return;
       }
@@ -390,10 +500,31 @@ export function DocumentList({ search }: { search: string }) {
       )}
       {selectionMode && (
         <div className="bulk-actions" role="toolbar" aria-label="Bulk document actions">
-          <span><b>{selectedDocs.length}</b> selected</span>
-          <button type="button" title={`${selectedDocs.every((doc) => doc.archived) ? "Restore" : "Archive"} selected (Ctrl/Cmd+Shift+A)`} onClick={archiveSelected}><IconArchive size={14} />{selectedDocs.every((doc) => doc.archived) ? "Restore" : "Archive"}<kbd>⌘/Ctrl⇧A</kbd></button>
-          <button type="button" className="bulk-trash" title="Move selected to trash (Delete)" onClick={requestTrashSelected}><IconTrash size={14} />Trash<kbd>Del</kbd></button>
-          <button type="button" className="icon-btn" aria-label="Clear selection" title="Clear selection (Esc)" onClick={clearBulkSelection}><IconX size={15} /></button>
+          <div className="bulk-selection-summary" aria-live="polite"><span><b>{selectedDocs.length}</b> selected</span><button type="button" className="bulk-clear" aria-label="Clear selection" title="Clear selection (Esc)" onClick={clearBulkSelection}><IconX size={15} /></button></div>
+          <div className="bulk-action-buttons">
+            <button type="button" className="bulk-primary" title={`${selectedDocs.every((doc) => doc.archived) ? "Restore" : "Archive"} selected (Ctrl/Cmd+Shift+A)`} onClick={archiveSelected}><IconArchive size={14} />{selectedDocs.every((doc) => doc.archived) ? "Restore" : "Archive"}</button>
+            <span className="group-actions" ref={groupMenuRef}>
+              <button type="button" aria-haspopup={creatingGroup ? "dialog" : "menu"} aria-expanded={groupMenuOpen} onClick={() => { if (groupMenuOpen) setGroupMenuOpen(false); else { setGroupMenuOpen(true); setBulkMenuOpen(false); } }}><IconFolder size={14} />Group<IconChevronDown size={13} /></button>
+            {groupMenuOpen && creatingGroup && <div className="group-picker group-create" role="dialog" aria-label="New group">
+              <form autoComplete="off" onSubmit={(event) => { event.preventDefault(); createGroup(newGroupName, selectedDocs.map((doc) => doc.id)); }}>
+                <label htmlFor="new-group-name">New group</label>
+                <input id="new-group-name" aria-label="New group name" autoComplete="off" spellCheck={false} placeholder="Group name" value={newGroupName} onChange={(event) => setNewGroupName(event.target.value)} autoFocus />
+                <div><button type="button" onClick={() => setCreatingGroup(false)}>Back</button><button type="submit" className="group-create-button" disabled={!newGroupName.trim()}>Create</button></div>
+              </form>
+            </div>}
+            {groupMenuOpen && !creatingGroup && <div className="group-picker" role="menu" aria-label="Group selected documents">
+              {(groups.data ?? []).map((group) => <button key={group.id} type="button" role="menuitem" title={`Move selected documents to ${group.name}`} onClick={() => assignToGroup(group.id, selectedDocs.map((doc) => doc.id))}><IconFolder size={14} />{group.name}</button>)}
+              {selectedGroupStates.some(Boolean) && <button type="button" role="menuitem" className="group-remove-button" onClick={() => removeFromGroup(selectedDocs.map((doc) => doc.id))}><IconX size={14} />Remove from group</button>}
+              <button type="button" role="menuitem" className={hasGroupMembershipActions ? "group-new-button" : undefined} onClick={() => setCreatingGroup(true)}><IconPlus size={14} />New group…</button>
+            </div>}
+            </span>
+            <span className="bulk-more-actions">
+              <button type="button" className="bulk-more-trigger" aria-haspopup="menu" aria-expanded={bulkMenuOpen} onClick={() => { setBulkMenuOpen((open) => !open); setGroupMenuOpen(false); }}>More actions<IconChevronDown size={13} /></button>
+              {bulkMenuOpen && <div className="bulk-action-menu" role="menu" aria-label="More selection actions">
+                <button type="button" role="menuitem" className="bulk-trash" title="Move selected documents to trash (Delete)" onClick={requestTrashSelected}><IconTrash size={14} />Move to trash<kbd>Del</kbd></button>
+              </div>}
+            </span>
+          </div>
         </div>
       )}
       <ul
@@ -407,9 +538,14 @@ export function DocumentList({ search }: { search: string }) {
         if (!event.currentTarget.contains(event.relatedTarget)) clearActive();
       }}
     >
-      {docs.data?.map((doc) => (
-        <DocumentRow key={doc.id} doc={doc} isActive={doc.id === activeId} isSelected={selectedIds.has(doc.id)} selectionMode={selectionMode} suppressPreview={shiftSelecting} reorderable={canReorder} dragState={draggedId === doc.id ? "dragging" : dropTargetId === doc.id ? "drop-target" : undefined} suppressActivation={suppressActivation} onReorderPointerDown={(event) => onReorderPointerDown(doc, event)} onReorderPointerMove={onReorderPointerMove} onReorderPointerUp={onReorderPointerUp} onSelectForBulk={selectForBulk} onSelectRangeForBulk={selectRangeForBulk} onToggleBulkSelection={toggleBulkSelection} attention={documentAttention(doc, now)} onAcknowledge={acknowledge} onToggleComplete={(d) => void toggleComplete(d, qc)} onTogglePin={(d) => void togglePinned(d, qc)} onUpdateStatus={(d, status) => void updateStatus(d, status, qc)} />
-      ))}
+      {groupedDocs.sections.map((section) => <li key={section.id} className="document-group">
+        <button type="button" className="document-group-heading" aria-expanded={!collapsedGroups.has(section.id)} onClick={() => setCollapsedGroups((current) => { const next = new Set(current); if (next.has(section.id)) next.delete(section.id); else next.add(section.id); return next; })}>
+          {collapsedGroups.has(section.id) ? <IconChevronRight size={15} /> : <IconChevronDown size={15} />}<b>{section.name}</b><small>{section.documents.length}</small>
+        </button>
+        {!collapsedGroups.has(section.id) && <ul className="document-group-items">{section.documents.map((doc) => renderRow(doc, section.id))}</ul>}
+      </li>)}
+      {groupedDocs.ungrouped.length > 0 && groupedDocs.sections.length > 0 && <li className="document-group ungrouped"><div className="document-group-heading static"><span /><b>Ungrouped</b><small>{groupedDocs.ungrouped.length}</small></div><ul className="document-group-items">{groupedDocs.ungrouped.map((doc) => renderRow(doc))}</ul></li>}
+      {groupedDocs.sections.length === 0 && groupedDocs.ungrouped.map((doc) => renderRow(doc))}
       {docs.data?.length === 0 &&
         (activeFilterCount(filters) > 0 ? (
           // Distinguish "you filtered everything out" from "this view is empty",

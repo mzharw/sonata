@@ -6,7 +6,7 @@ use crate::{
     },
     errors::{Result, SonataError},
     indexer, markdown, relations,
-    workspace::{LockConfig, Workspace},
+    workspace::{DocumentGroup, LockConfig, Workspace},
 };
 use serde::Serialize;
 use sha2::{Digest, Sha256};
@@ -43,6 +43,14 @@ pub struct WorkspaceInfo {
     attachment_count: usize,
     attachment_bytes: u64,
     index_bytes: u64,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GroupSummary {
+    id: String,
+    name: String,
+    document_ids: Vec<String>,
 }
 
 fn directory_file_stats(path: &Path) -> Result<(usize, u64)> {
@@ -251,9 +259,9 @@ fn session<'a>(state: &'a AppState) -> Result<std::sync::MutexGuard<'a, Option<S
     }
     Ok(guard)
 }
-#[tauri::command]
-pub fn create_workspace(path: String, state: State<AppState>) -> Result<()> {
-    let workspace = Workspace::create(PathBuf::from(path))?;
+
+pub(crate) fn open_workspace_session(path: PathBuf, state: &AppState) -> Result<()> {
+    let workspace = Workspace::open(path)?;
     let index = Index::open(&workspace.db_path())?;
     indexer::rebuild(&workspace, &index)?;
     *state
@@ -263,16 +271,26 @@ pub fn create_workspace(path: String, state: State<AppState>) -> Result<()> {
         Some(Session { workspace, index });
     Ok(())
 }
+
 #[tauri::command]
-pub fn open_workspace(path: String, state: State<AppState>) -> Result<()> {
-    let workspace = Workspace::open(PathBuf::from(path))?;
+pub fn create_workspace(path: String, state: State<AppState>, app: AppHandle) -> Result<()> {
+    let workspace = Workspace::create(PathBuf::from(path))?;
     let index = Index::open(&workspace.db_path())?;
     indexer::rebuild(&workspace, &index)?;
+    let root = workspace.root.clone();
     *state
         .0
         .lock()
         .map_err(|_| SonataError::WorkspaceUnavailable("state lock failed".into()))? =
         Some(Session { workspace, index });
+    crate::preferences::record_last_workspace(&app, &root);
+    Ok(())
+}
+#[tauri::command]
+pub fn open_workspace(path: String, state: State<AppState>, app: AppHandle) -> Result<()> {
+    let root = PathBuf::from(path);
+    open_workspace_session(root.clone(), &state)?;
+    crate::preferences::record_last_workspace(&app, &root);
     Ok(())
 }
 #[tauri::command]
@@ -721,6 +739,160 @@ pub fn list_tags(state: State<AppState>) -> Result<Vec<TagCount>> {
         .into_iter()
         .map(|(tag, count)| TagCount { tag, count })
         .collect())
+}
+#[tauri::command]
+pub fn list_groups(state: State<AppState>) -> Result<Vec<GroupSummary>> {
+    let mut guard = session(&state)?;
+    let session = guard.as_mut().unwrap();
+    // A file can be deleted outside Sonata. Prune those stale memberships while
+    // reading groups so empty sections never linger in the workspace index.
+    let valid_ids: HashSet<_> = session
+        .index
+        .list(&SearchQuery::default())?
+        .into_iter()
+        .map(|doc| doc.document.id)
+        .collect();
+    let before = session.workspace.config.groups.clone();
+    for group in &mut session.workspace.config.groups {
+        group.document_ids.retain(|id| valid_ids.contains(id));
+    }
+    session
+        .workspace
+        .config
+        .groups
+        .retain(|group| !group.document_ids.is_empty());
+    if session.workspace.config.groups != before {
+        session.workspace.save_config()?;
+    }
+    Ok(session
+        .workspace
+        .config
+        .groups
+        .iter()
+        .map(|group| GroupSummary {
+            id: group.id.clone(),
+            name: group.name.clone(),
+            document_ids: group.document_ids.clone(),
+        })
+        .collect())
+}
+
+/// Assigning a document moves it between visual groups. This gives every row one
+/// unambiguous home while leaving its tags fully independent and reusable.
+#[tauri::command]
+pub fn add_documents_to_group(
+    group_id: String,
+    document_ids: Vec<String>,
+    state: State<AppState>,
+) -> Result<()> {
+    let mut guard = session(&state)?;
+    let workspace = &mut guard.as_mut().unwrap().workspace;
+    if !workspace
+        .config
+        .groups
+        .iter()
+        .any(|group| group.id == group_id)
+    {
+        return Err(SonataError::WorkspaceUnavailable(
+            "group no longer exists".into(),
+        ));
+    }
+    let ids: HashSet<_> = document_ids.into_iter().collect();
+    for group in &mut workspace.config.groups {
+        group.document_ids.retain(|id| !ids.contains(id));
+    }
+    let group = workspace
+        .config
+        .groups
+        .iter_mut()
+        .find(|group| group.id == group_id)
+        .expect("group checked above");
+    let to_add: Vec<_> = ids
+        .into_iter()
+        .filter(|id| !group.document_ids.contains(id))
+        .collect();
+    group.document_ids.extend(to_add);
+    workspace.save_config()
+}
+#[tauri::command]
+pub fn remove_documents_from_group(
+    document_ids: Vec<String>,
+    state: State<AppState>,
+) -> Result<()> {
+    let mut guard = session(&state)?;
+    let workspace = &mut guard.as_mut().unwrap().workspace;
+    let ids: HashSet<_> = document_ids.into_iter().collect();
+    for group in &mut workspace.config.groups {
+        group.document_ids.retain(|id| !ids.contains(id));
+    }
+    workspace
+        .config
+        .groups
+        .retain(|group| !group.document_ids.is_empty());
+    workspace.save_config()
+}
+#[tauri::command]
+pub fn create_group(
+    name: String,
+    document_ids: Vec<String>,
+    state: State<AppState>,
+) -> Result<GroupSummary> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(SonataError::InvalidMetadata(
+            "group name cannot be empty".into(),
+        ));
+    }
+    let mut guard = session(&state)?;
+    let workspace = &mut guard.as_mut().unwrap().workspace;
+    let id = Ulid::new().to_string();
+    let ids: HashSet<_> = document_ids.into_iter().collect();
+    for group in &mut workspace.config.groups {
+        group.document_ids.retain(|id| !ids.contains(id));
+    }
+    workspace
+        .config
+        .groups
+        .retain(|group| !group.document_ids.is_empty());
+    let group = DocumentGroup {
+        id: id.clone(),
+        name: name.to_string(),
+        document_ids: ids.into_iter().collect(),
+    };
+    workspace.config.groups.push(group.clone());
+    workspace.save_config()?;
+    Ok(GroupSummary {
+        id: group.id,
+        name: group.name,
+        document_ids: group.document_ids,
+    })
+}
+#[tauri::command]
+pub fn reorder_group_documents(
+    group_id: String,
+    document_ids: Vec<String>,
+    state: State<AppState>,
+) -> Result<()> {
+    let mut guard = session(&state)?;
+    let workspace = &mut guard.as_mut().unwrap().workspace;
+    let group = workspace
+        .config
+        .groups
+        .iter_mut()
+        .find(|group| group.id == group_id)
+        .ok_or_else(|| SonataError::WorkspaceUnavailable("group no longer exists".into()))?;
+    let expected: HashSet<_> = group.document_ids.iter().collect();
+    let received: HashSet<_> = document_ids.iter().collect();
+    if expected.len() != group.document_ids.len()
+        || received.len() != document_ids.len()
+        || expected != received
+    {
+        return Err(SonataError::InvalidMetadata(
+            "group order must contain every group document exactly once".into(),
+        ));
+    }
+    group.document_ids = document_ids;
+    workspace.save_config()
 }
 #[tauri::command]
 pub fn list_children(id: String, state: State<AppState>) -> Result<Vec<DocumentSummary>> {

@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { native } from "../../lib/native";
-import type { DocumentSummary } from "../../types/domain";
+import type { DocumentGroup, DocumentSummary } from "../../types/domain";
 import { useUi } from "../../stores/ui";
 import { useDocumentEditor } from "../../hooks/useDocumentEditor";
 import { StatusSelect } from "../../components/StatusSelect";
@@ -9,6 +9,7 @@ import { DocumentMetaBar } from "../../components/DocumentMetaBar";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/MarkdownEditor";
 import { AttachmentButton } from "../../components/AttachmentButton";
 import { Tooltip } from "../../components/Tooltip";
+import { ScrollingTitleInput } from "../../components/ScrollingTitleInput";
 import { attachToDocument, chooseAndImportAttachment, importClipboardImage } from "../../lib/attachments";
 import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
 import { TYPE_SPECS, type RowChip } from "../../lib/documentTypes";
@@ -21,7 +22,7 @@ import { STATUS_OPTIONS } from "../../lib/statusOptions";
 import { STAGE_OPTIONS, stageLabel } from "../../lib/stageOptions";
 import { urlDomain } from "../../lib/url";
 import { wordCount } from "../../lib/wordCount";
-import { renderMarkdownPreview } from "../../lib/renderMarkdown";
+import { copyCodeFromTarget, renderMarkdownPreview } from "../../lib/renderMarkdown";
 import { formatDateTime } from "../../lib/dateTime";
 import { relativeTime, absoluteDate, exactTimestamp } from "../../lib/formatTimestamp";
 import { IconStatusDone, IconStatusTodo, IconPin, IconFlag, IconArchive, IconTrash, IconFullScreenEdit, IconCheck, IconCopy, IconPencil, IconPencilLine, IconMarkdown, IconLink, IconExternalLink, IconCalendar, IconBell } from "../../components/icons";
@@ -63,7 +64,7 @@ function reminderMeta(reminder: string) {
   return { label: `in ${Math.ceil(delta / 86_400_000)}d`, overdue: false };
 }
 
-export function DocumentRow({ doc, isActive, isSelected = false, selectionMode = false, suppressPreview = false, reorderable = false, dragState, suppressActivation = false, onReorderPointerDown, onReorderPointerMove, onReorderPointerUp, onSelectForBulk, onSelectRangeForBulk, onToggleBulkSelection, attention, onAcknowledge, onToggleComplete, onTogglePin, onUpdateStatus }: { doc: DocumentSummary; isActive: boolean; isSelected?: boolean; selectionMode?: boolean; suppressPreview?: boolean; reorderable?: boolean; dragState?: "dragging" | "drop-target"; suppressActivation?: boolean; onReorderPointerDown?: (event: ReactPointerEvent<HTMLLIElement>) => void; onReorderPointerMove?: (event: ReactPointerEvent<HTMLLIElement>) => void; onReorderPointerUp?: (event: ReactPointerEvent<HTMLLIElement>) => void; onSelectForBulk?: (id: string) => void; onSelectRangeForBulk?: (id: string) => void; onToggleBulkSelection?: (id: string) => void; attention?: DocumentAttention; onAcknowledge: (doc: DocumentSummary, attention: DocumentAttention) => void; onToggleComplete: (doc: DocumentSummary) => void; onTogglePin: (doc: DocumentSummary) => void; onUpdateStatus: (doc: DocumentSummary, status: TaskStatus | undefined) => void }) {
+export function DocumentRow({ doc, isActive, isSelected = false, selectionMode = false, suppressPreview = false, reorderable = false, reorderGroupId, dragState, suppressActivation = false, onReorderPointerDown, onReorderPointerMove, onReorderPointerUp, onSelectForBulk, onSelectRangeForBulk, onToggleBulkSelection, attention, onAcknowledge, onToggleComplete, onTogglePin, onUpdateStatus, groups = [], onAddToGroup, onRemoveFromGroup, onCreateGroup }: { doc: DocumentSummary; isActive: boolean; isSelected?: boolean; selectionMode?: boolean; suppressPreview?: boolean; reorderable?: boolean; reorderGroupId?: string; dragState?: "dragging" | "drop-target"; suppressActivation?: boolean; onReorderPointerDown?: (event: ReactPointerEvent<HTMLLIElement>) => void; onReorderPointerMove?: (event: ReactPointerEvent<HTMLLIElement>) => void; onReorderPointerUp?: (event: ReactPointerEvent<HTMLLIElement>) => void; onSelectForBulk?: (id: string) => void; onSelectRangeForBulk?: (id: string) => void; onToggleBulkSelection?: (id: string) => void; attention?: DocumentAttention; onAcknowledge: (doc: DocumentSummary, attention: DocumentAttention) => void; onToggleComplete: (doc: DocumentSummary) => void; onTogglePin: (doc: DocumentSummary) => void; onUpdateStatus: (doc: DocumentSummary, status: TaskStatus | undefined) => void; groups?: DocumentGroup[]; onAddToGroup?: (groupId: string, documentIds: string[]) => void; onRemoveFromGroup?: (documentIds: string[]) => void; onCreateGroup?: (name: string, documentIds: string[]) => void }) {
   const ui = useUi();
   const qc = useQueryClient();
   const expanded = ui.expandedId === doc.id;
@@ -219,6 +220,7 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
     <li
       id={`doc-${doc.id}`}
       data-document-id={doc.id}
+      data-reorder-group-id={reorderGroupId}
       className={`doc doc-type-${doc.type}${expanded ? " expanded" : ""}${previewVisible ? " previewing" : ""}${isActive ? " is-active" : ""}${isSelected ? " is-selected" : ""}${doc.pinned ? " pinned" : ""}${attention ? " needs-attention" : ""}${reorderable ? " reorderable" : ""}${dragState ? ` ${dragState}` : ""}`}
       onPointerDown={onReorderPointerDown}
       onPointerMove={onReorderPointerMove}
@@ -459,6 +461,8 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
         <div ref={contextMenuRef} className="document-context-menu" role="menu" onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
           <button role="menuitem" type="button" onClick={() => { ui.expand(doc.id); ui.closeContextMenu(); }}>Open</button>
           {onSelectForBulk && <button role="menuitem" type="button" onClick={() => (isSelected ? onToggleBulkSelection?.(doc.id) : onSelectForBulk(doc.id))}>{isSelected ? "Deselect this document" : "Select this document"}</button>}
+          {onAddToGroup && <div className="context-group-menu"><span>{groups.some((group) => group.documentIds.includes(doc.id)) ? "Move to group" : "Add to group"}</span>{groups.map((group) => { const current = group.documentIds.includes(doc.id); return <button key={group.id} role="menuitem" type="button" disabled={current} aria-disabled={current || undefined} onClick={() => { if (!current) { onAddToGroup(group.id, [doc.id]); ui.closeContextMenu(); } }}>{group.name}{current ? " · Current" : ""}</button>; })}<button role="menuitem" type="button" onClick={() => { const name = window.prompt("New group name"); if (name) onCreateGroup?.(name, [doc.id]); ui.closeContextMenu(); }}>New group…</button></div>}
+          {onRemoveFromGroup && groups.some((group) => group.documentIds.includes(doc.id)) && <button role="menuitem" type="button" onClick={() => { onRemoveFromGroup([doc.id]); ui.closeContextMenu(); }}>Remove from group</button>}
           <button role="menuitem" type="button" onClick={() => { onTogglePin(doc); ui.closeContextMenu(); }}>{doc.pinned ? "Unpin" : "Pin"}</button>
           {doc.type === "task" && <button role="menuitem" type="button" onClick={() => { onToggleComplete(doc); ui.closeContextMenu(); }}>{doc.status === "completed" ? "Mark as todo" : "Mark as completed"}</button>}
           {(doc.type === "task" || doc.type === "note") && <button role="menuitem" type="button" onClick={() => void createRelated().catch((error) => { console.error("Couldn't create related document", error); ui.showToast({ message: "Couldn't create related document" }); }).finally(() => ui.closeContextMenu())}>{doc.type === "task" ? "New subtask" : "New related document"}</button>}
@@ -480,6 +484,12 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
           {preview.data?.body.trim() && <div className="md-prose" onClick={(event) => {
             const target = event.target;
             if (!(target instanceof Element)) return;
+            if (target.closest("[data-copy-code]")) {
+              event.preventDefault();
+              event.stopPropagation();
+              void copyCodeFromTarget(target);
+              return;
+            }
             const href = target.closest("a")?.getAttribute("href");
             if (!href) return;
             const attachmentPath = href.match(/^attachments\/[A-Za-z0-9_./-]+$/)?.[0];
@@ -512,7 +522,7 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
             </div>
           )}
           <div className="editor-title-wrap">
-            <input className="editor-title" aria-label="Title" value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} onBlur={() => void save()} />
+            <ScrollingTitleInput className="editor-title" value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} onBlur={() => void save()} />
             <IconPencil className="editor-title-pen" size={15} aria-hidden="true" />
           </div>
           <DocumentMetaBar doc={full} onChange={setFull} onChangeType={(to) => void convertTo(to)} />
@@ -521,7 +531,7 @@ export function DocumentRow({ doc, isActive, isSelected = false, selectionMode =
           <MarkdownEditor
             ref={bodyEditorRef}
             ariaLabel="Note body"
-            placeholder="Click to write in Markdown…"
+            placeholder={full.type === "task" ? "Add details…" : full.type === "idea" ? "Develop this idea…" : full.type === "bookmark" ? "Add context or notes…" : full.type === "inbox" ? "Write something…" : "Start writing…"}
             value={full.body}
             onChange={(body) => setFull({ ...full, body })}
             onBlur={() => void save()}

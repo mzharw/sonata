@@ -49,6 +49,14 @@ pub fn run() {
             preferences::apply_panel_shortcut(app.handle(), preferences.panel_shortcut.as_deref())?;
             windows::sidebar::install(app.handle())?;
             windows::sidebar::apply_preferences(app.handle(), &preferences);
+            if let Some(path) = preferences.last_workspace.as_deref() {
+                // A moved or unavailable folder should behave like a first launch: the
+                // workspace picker remains available instead of blocking Sonata itself.
+                let _ = commands::open_workspace_session(
+                    std::path::PathBuf::from(path),
+                    &app.state::<AppState>(),
+                );
+            }
             reminders::spawn_watcher(app.handle().clone());
             let open_item = MenuItem::with_id(app, "open", "Open Sonata", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit Sonata", true, None::<&str>)?;
@@ -110,6 +118,11 @@ pub fn run() {
             commands::restore_document_from_trash,
             commands::set_document_type,
             commands::list_tags,
+            commands::list_groups,
+            commands::add_documents_to_group,
+            commands::remove_documents_from_group,
+            commands::create_group,
+            commands::reorder_group_documents,
             commands::list_children,
             commands::list_backlinks,
             commands::rebuild_index,

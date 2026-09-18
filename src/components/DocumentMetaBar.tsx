@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { StatusSelect } from "./StatusSelect";
 import { PrioritySelect } from "./PrioritySelect";
 import { DueDateField } from "./DueDateField";
@@ -6,7 +6,7 @@ import { StageSelect } from "./StageSelect";
 import { UrlField } from "./UrlField";
 import { TypeSelect } from "./TypeSelect";
 import { TagChipInput } from "./TagChipInput";
-import { IconBell } from "./icons";
+import { IconBell, IconChevronDown } from "./icons";
 import { TYPE_SPECS, type MetaField } from "../lib/documentTypes";
 import { native } from "../lib/native";
 import type { DocumentType, SonataDocument } from "../types/domain";
@@ -39,6 +39,8 @@ export function DocumentMetaBar({
   onChangeType?: (type: DocumentType) => void;
 }) {
   const spec = TYPE_SPECS[doc.type];
+  const [detailsOpen, setDetailsOpen] = useState(true);
+  const hasDetails = spec.meta.includes("due") || spec.meta.includes("tags") || spec.meta.includes("reminder") || spec.meta.includes("url");
   // An exhaustive map rather than a switch: TypeScript rejects the object outright if a
   // MetaField is added without a control. Entries the type does not list are plain
   // elements that are never rendered, so e.g. TagChipInput's tag query stays unfired.
@@ -91,7 +93,10 @@ export function DocumentMetaBar({
           {chipFields.map((field) => <div className="meta-chip" key={field}>{controls[field]}</div>)}
         </div>
       )}
-      {(spec.meta.includes("due") || spec.meta.includes("tags") || spec.meta.includes("reminder")) && (
+      {hasDetails && <button type="button" className="meta-details-toggle" aria-expanded={detailsOpen} onClick={() => setDetailsOpen((open) => !open)}>
+        <span>{detailsOpen ? "Hide additional details" : "Show additional details"}</span><IconChevronDown size={13} />
+      </button>}
+      {detailsOpen && (spec.meta.includes("due") || spec.meta.includes("tags") || spec.meta.includes("reminder")) && (
         <div className="meta-details">
           {(spec.meta.includes("due") || spec.meta.includes("reminder")) && <div className="meta-detail-column">
             {spec.meta.includes("due") && renderField("due")}
@@ -100,7 +105,7 @@ export function DocumentMetaBar({
           {spec.meta.includes("tags") && <div className="meta-detail-column">{renderField("tags")}</div>}
         </div>
       )}
-      {spec.meta.includes("url") && <div className="meta-details meta-details-link">{renderField("url")}</div>}
+      {detailsOpen && spec.meta.includes("url") && <div className="meta-details meta-details-link">{renderField("url")}</div>}
     </div>
   );
 }

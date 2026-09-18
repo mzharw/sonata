@@ -17,4 +17,19 @@ describe("renderMarkdownPreview", () => {
     expect(html).not.toContain('target="_blank"');
     expect(html).toContain('href="https://sonata.invalid/document/01ARZ3NDEKTSV4RRFFQ69G5FAV"');
   });
+
+  it("adds a copy button to fenced code blocks", () => {
+    const html = renderMarkdownPreview("```ts\nconst answer = 42;\n```");
+
+    expect(html).toContain('data-copy-code');
+    expect(html).toContain('aria-label="Copy code"');
+    expect(html).toContain("const answer = 42;");
+  });
+
+  it("highlights fenced blocks with a supported language", () => {
+    const html = renderMarkdownPreview("```js\nconst answer = 42;\n```");
+
+    expect(html).toContain('class="hljs language-js"');
+    expect(html).toContain('class="hljs-keyword"');
+  });
 });

@@ -142,7 +142,7 @@ export default function App() {
         <span className="topbar-divider" aria-hidden="true" />
         <div className="search">
           <IconSearch size={14} />
-          <input ref={searchRef} aria-label="Search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
+          <input ref={searchRef} aria-label="Search" autoComplete="off" spellCheck={false} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search" />
           <kbd className="search-focus-hotkey" title="Focus search">{shortcutLabel(prefs.shortcuts.search)}</kbd>
           <button type="button" className="search-hotkey" aria-label="Open command palette" title={`Open command palette (${shortcutLabel(prefs.shortcuts.palette)})`} onClick={() => ui.setPalette(true)}>
             <kbd>{shortcutLabel(prefs.shortcuts.palette)}</kbd>

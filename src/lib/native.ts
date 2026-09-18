@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import type { Attachment, DocumentSummary, DocumentType, SearchQuery, SonataDocument } from "../types/domain";
+import type { Attachment, DocumentGroup, DocumentSummary, DocumentType, SearchQuery, SonataDocument } from "../types/domain";
 import type { Preferences } from "./preferences";
 
 export type WorkspaceInfo = {
@@ -69,6 +69,11 @@ export const native = {
     }
   },
   tags: () => invoke<Array<{ tag: string; count: number }>>("list_tags"),
+  groups: () => invoke<DocumentGroup[]>("list_groups"),
+  addDocumentsToGroup: (groupId: string, documentIds: string[]) => invoke<void>("add_documents_to_group", { groupId, documentIds }),
+  removeDocumentsFromGroup: (documentIds: string[]) => invoke<void>("remove_documents_from_group", { documentIds }),
+  createGroup: (name: string, documentIds: string[]) => invoke<DocumentGroup>("create_group", { name, documentIds }),
+  reorderGroupDocuments: (groupId: string, documentIds: string[]) => invoke<void>("reorder_group_documents", { groupId, documentIds }),
   children: (id: string) => invoke<DocumentSummary[]>("list_children", { id }),
   backlinks: (id: string) => invoke<DocumentSummary[]>("list_backlinks", { id }),
   capture: (text: string) => invoke<SonataDocument>("quick_capture", { text }),

@@ -7,13 +7,14 @@ import { useUi, NO_FILTERS } from "../../stores/ui";
 import { FilterMenu } from "./FilterMenu";
 import { DocumentList } from "../editor/DocumentList";
 
-vi.mock("../../lib/native", () => ({ native: { listDocuments: vi.fn(), tags: vi.fn() } }));
+vi.mock("../../lib/native", () => ({ native: { listDocuments: vi.fn(), tags: vi.fn(), groups: vi.fn() } }));
 
 beforeEach(() => {
   vi.resetAllMocks();
   useUi.setState({ view: "all", tag: undefined, filters: NO_FILTERS });
   vi.mocked(native.listDocuments).mockResolvedValue([]);
   vi.mocked(native.tags).mockResolvedValue([{ tag: "work", count: 2 }, { tag: "urgent", count: 1 }]);
+  vi.mocked(native.groups).mockResolvedValue([]);
 });
 afterEach(cleanup);
 

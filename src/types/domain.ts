@@ -5,6 +5,8 @@ export type Priority = "none" | "low" | "medium" | "high" | "urgent";
 export type IdeaStage = "spark" | "developing" | "parked";
 export interface SonataDocument { id: string; path: string; type: DocumentType; title: string; body: string; tags: string[]; created: string; updated: string; archived: boolean; pinned: boolean; order?: number; status?: TaskStatus; priority?: Priority; stage?: IdeaStage; due?: string; reminder?: string; acknowledgedDue?: string; acknowledgedReminder?: string; parent?: string | null; links?: string[]; bookmark?: { url: string }; cover?: string; contentHash?: string; }
 export interface Attachment { path: string; name: string; mediaType: string; dataUrl?: string; }
+/** A loose workspace grouping. Tags never imply membership in this collection. */
+export interface DocumentGroup { id: string; name: string; documentIds: string[]; }
 export interface DocumentSummary extends Omit<SonataDocument, "body"> { childCount: number; completedChildCount: number; }
 /** `"default"` defers to the listed type's natural order, resolved in Rust from its `TypeSpec`. */
 export type SortOrder = "default" | "due" | "updated" | "created" | "priority" | "title";

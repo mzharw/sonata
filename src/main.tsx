@@ -15,9 +15,10 @@ const BlockWebViewShortcuts = () => {
   useEffect(() => {
     const blockBrowserShortcut = (event: KeyboardEvent) => {
       const key = event.key.toLowerCase();
+      const primaryModifier = event.ctrlKey || event.metaKey;
       const blocked =
-        (event.ctrlKey && ["p", "r", "f", "l", "+", "-", "=", "0"].includes(key)) ||
-        (event.ctrlKey && event.shiftKey && ["i", "j", "c"].includes(key)) ||
+        (primaryModifier && ["p", "r", "f", "g", "l", "+", "-", "=", "0"].includes(key)) ||
+        (primaryModifier && event.shiftKey && ["i", "j", "c"].includes(key)) ||
         event.key === "F5" || event.key === "F12";
       if (blocked) {
         event.preventDefault();

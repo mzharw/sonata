@@ -42,6 +42,10 @@ pub struct Preferences {
     pub shortcuts: ShortcutPreferences,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_width: Option<u32>,
+    /// The most recently opened workspace is app-local state, rather than
+    /// workspace metadata, so it never travels with a folder when it is synced.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_workspace: Option<String>,
 }
 
 impl Default for Preferences {
@@ -61,6 +65,7 @@ impl Default for Preferences {
             panel_shortcut: None,
             shortcuts: ShortcutPreferences::default(),
             panel_width: None,
+            last_workspace: None,
         }
     }
 }
@@ -215,6 +220,14 @@ pub fn record_panel_width(app: &AppHandle, width: u32) {
     let _ = save(app, preferences);
 }
 
+pub fn record_last_workspace(app: &AppHandle, workspace: &std::path::Path) {
+    let mut preferences = current(app);
+    preferences.last_workspace = Some(workspace.display().to_string());
+    // Opening a workspace must remain useful even if the app configuration
+    // directory is temporarily unavailable. We can simply try again next time.
+    let _ = save(app, preferences);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -231,5 +244,14 @@ mod tests {
         let mut preferences = Preferences::default();
         preferences.shortcuts.palette = preferences.shortcuts.search.clone();
         assert!(validate(&preferences).is_err());
+    }
+
+    #[test]
+    fn last_workspace_is_optional_for_existing_preferences_files() {
+        let preferences: Preferences = serde_json::from_str(
+            r#"{"version":1,"theme":"system","accent":"green","density":"comfortable","motion":"system","hoverEnabled":true,"autoHide":true,"hoverDelayMs":250,"pauseHoverFullscreen":false,"showTags":true,"showQuickAdd":true,"panelShortcut":null,"shortcuts":{"search":"Alt+S","palette":"Alt+K","capture":"CmdOrCtrl+N","newNote":"CmdOrCtrl+Shift+N"}}"#,
+        )
+        .unwrap();
+        assert_eq!(preferences.last_workspace, None);
     }
 }

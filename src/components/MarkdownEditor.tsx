@@ -19,7 +19,7 @@ import {
 import { getCaretCoordinates } from "../lib/caretPosition";
 import { ShorthandMenu, type MenuAnchor } from "./ShorthandMenu";
 import type { Attachment } from "../types/domain";
-import { renderWikiLinks } from "../lib/renderMarkdown";
+import { addCodeCopyButtons, copyCodeFromTarget, renderWikiLinks } from "../lib/renderMarkdown";
 import { native } from "../lib/native";
 import { useDismiss } from "../hooks/useDismiss";
 
@@ -32,7 +32,7 @@ function renderTokensHtml(tokens: Token[], attachmentUrls: Record<string, string
   // actually clickable straight from the preview, without needing to enter edit mode first.
   const interactive = html.replace(/<input\b([^>]*?)\sdisabled(?:="")?([^>]*)>/g, "<input$1$2>");
   const withLocalImages = interactive.replace(/(src=")(attachments\/[A-Za-z0-9_./-]+)(")/g, (_all, before: string, path: string, after: string) => `${before}${attachmentUrls[path] ?? path}${after}`);
-  return DOMPurify.sanitize(withLocalImages);
+  return addCodeCopyButtons(DOMPurify.sanitize(withLocalImages) ?? "");
 }
 
 function attachmentPathFromTarget(target: EventTarget | null): string | undefined {
@@ -90,6 +90,12 @@ function BlockPreview({
       aria-label={`Edit ${ariaLabel}`}
       onClick={(e) => {
         const target = e.target as HTMLElement;
+        if (target.closest("[data-copy-code]")) {
+          e.preventDefault();
+          e.stopPropagation();
+          void copyCodeFromTarget(target);
+          return;
+        }
         const attachmentPath = attachmentPathFromTarget(target);
         if (attachmentPath && onOpenAttachment) {
           e.preventDefault();
@@ -209,8 +215,8 @@ function EmptyPlaceholder({
       }}
     >
       <div className="md-preview-placeholder">
-        <strong>This note is empty</strong>
-        <span className="md-preview-placeholder-hint">{placeholder ?? "Click anywhere to start writing — or type / for a command menu"}</span>
+        <strong>{placeholder ?? "Start writing…"}</strong>
+        <span className="md-preview-placeholder-hint">Markdown supported · Type <kbd>/</kbd> for commands</span>
         <div className="md-quick-start" role="group" aria-label="Quick start">
           {QUICK_START.map((qs) => {
             const Icon = qs.icon;
@@ -623,6 +629,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
   const shell = (content: ReactNode) => <div className="md-editor-shell">{content}</div>;
 
   const openAttachmentFromFrozenPreview = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if ((event.target as Element).closest("[data-copy-code]")) {
+      event.preventDefault();
+      event.stopPropagation();
+      void copyCodeFromTarget(event.target);
+      return;
+    }
     const attachmentPath = attachmentPathFromTarget(event.target);
     if (attachmentPath && onOpenAttachment) {
       event.preventDefault();
@@ -673,6 +685,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, {
               </div>
             , document.body)}
           </span>
+          <span className="md-toolbar-hint">Type <kbd>/</kbd> for commands</span>
           <span className="md-toolbar-spacer" />
           {onAttach && (
             <button type="button" className="icon-btn" title="Attach file" aria-label="Attach file" onMouseDown={(e) => e.preventDefault()} onClick={onAttach}>

@@ -176,8 +176,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .tag-browser-empty{margin:12px 8px;color:var(--muted);font-size:12px}
 
 .document-list-shell{display:flex;flex:1;min-height:0;flex-direction:column}
-.bulk-actions{display:flex;align-items:center;gap:7px;padding:8px 14px;border-bottom:1px solid var(--border-strong);background:color-mix(in srgb,var(--accent) 7%,var(--surface));font-size:12px}.bulk-actions>span{margin-right:auto;color:var(--muted)}.bulk-actions>span b{color:var(--text)}.bulk-actions button{min-height:30px;padding:5px 9px;border:1px solid var(--border);background:var(--surface);font-size:12px;font-weight:600}.bulk-actions button:hover{border-color:var(--border-strong);background:var(--hover)}.bulk-actions .bulk-trash{border-color:color-mix(in srgb,var(--danger) 40%,var(--border));color:var(--danger)}.bulk-actions .bulk-trash:hover{border-color:var(--danger);background:color-mix(in srgb,var(--danger) 7%,var(--surface))}
-.bulk-actions button kbd{margin-left:2px;padding:2px 4px;border:1px solid var(--border);border-radius:3px;background:var(--bg-alt);color:var(--muted);font:9px/1 ui-monospace,SFMono-Regular,monospace;font-weight:500}
+.bulk-actions{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:11px 16px;border-bottom:1px solid color-mix(in srgb,var(--accent) 28%,var(--border-strong));background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 12%,var(--surface)),var(--surface));font-size:12px}.bulk-selection-summary{display:flex;align-items:center;gap:8px;min-width:0;color:var(--muted)}.bulk-selection-summary>span{white-space:nowrap}.bulk-selection-summary b{color:var(--text);font-size:14px;font-variant-numeric:tabular-nums}.bulk-action-buttons{display:flex;align-items:center;justify-content:flex-end;gap:9px}.bulk-actions button{display:inline-flex;align-items:center;justify-content:center;gap:5px;min-height:31px;padding:5px 9px;border:1px solid var(--border);border-radius:7px;background:var(--surface);color:var(--text);font-size:12px;font-weight:650;white-space:nowrap}.bulk-actions button:hover{border-color:var(--border-strong);background:var(--hover)}.bulk-actions .bulk-clear{min-height:28px;padding:4px;border-color:transparent;background:transparent;color:var(--muted)}.bulk-actions .bulk-clear:hover{border-color:transparent;background:var(--hover);color:var(--text)}.bulk-actions .bulk-primary{border-color:color-mix(in srgb,var(--accent) 55%,var(--border));background:var(--accent);color:var(--accent-contrast)}.bulk-actions .bulk-primary:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 88%,var(--text))}.bulk-actions .bulk-primary svg{margin-left:1px}.bulk-more-actions{position:relative}.bulk-actions .bulk-more-trigger{color:var(--muted)}.bulk-action-menu{position:absolute;z-index:40;top:calc(100% + 8px);right:0;display:grid;gap:2px;width:205px;padding:5px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);box-shadow:var(--shadow-lg)}.bulk-action-menu button{justify-content:flex-start;width:100%;min-height:30px;border:0;background:transparent;text-align:left}.bulk-action-menu button:hover{background:var(--hover)}.bulk-action-menu .bulk-trash{color:var(--danger)}.bulk-actions button kbd{margin-left:auto;padding:2px 4px;border:1px solid color-mix(in srgb,var(--border) 75%,transparent);border-radius:3px;background:var(--bg-alt);color:var(--muted);font:9px/1 ui-monospace,SFMono-Regular,monospace;font-weight:500}
 .attention-strip{display:flex;align-items:flex-start;gap:14px;padding:14px 14px 10px;background:var(--bg);border-bottom:1px solid var(--border-strong);color:var(--muted)}
 .attention-strip-icon{display:grid;flex:none;place-items:center;width:30px;height:34px;color:var(--danger)}
 .attention-strip-items{display:flex;flex:1;flex-wrap:wrap;gap:8px;min-width:0}
@@ -186,6 +185,9 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .attention-strip-items b,.attention-strip-items span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .attention-strip-items b{font-size:12px;font-weight:600}.attention-strip-items span{color:var(--danger);font-size:10px;font-weight:700}
 .document-list{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;gap:7px;padding:14px 14px 30px;list-style:none;margin:0;outline:0}
+.document-group{list-style:none;border:1px solid transparent;border-radius:10px;transition:background .12s,border-color .12s}.document-group:hover{border-color:color-mix(in srgb,var(--border-strong) 55%,transparent);background:color-mix(in srgb,var(--accent) 2.5%,transparent)}.document-group-items{display:flex;flex-direction:column;gap:7px;margin:0;padding:0 4px 4px;list-style:none}.document-group-heading{display:flex;align-items:center;gap:6px;width:100%;margin:2px 0 5px;padding:7px 6px;color:var(--muted);border-radius:7px;text-align:left;font-size:12px}.document-group-heading:hover{background:transparent;color:var(--text)}.document-group-heading b{color:inherit;font-size:12px;font-weight:650}.document-group-heading small{margin-right:4px;margin-left:auto;color:var(--muted-soft);font-variant-numeric:tabular-nums}.document-group-heading.static{cursor:default}.document-group-heading.static:hover{background:transparent;color:var(--muted)}.document-group.ungrouped{margin-top:8px}
+.group-actions{position:relative}.group-picker{position:absolute;z-index:40;top:calc(100% + 8px);right:0;display:grid;gap:2px;width:220px;padding:5px;border:1px solid var(--border-strong);border-radius:9px;background:var(--surface);box-shadow:var(--shadow-lg)}.group-picker button{justify-content:flex-start;width:100%;min-height:30px;border:0;background:transparent;text-align:left}.group-picker button:hover{background:var(--hover)}.group-picker .group-remove-button{color:var(--danger)}.group-picker .group-new-button{position:relative;margin-top:3px;padding-top:8px;border-top:0}.group-picker .group-new-button::before{position:absolute;top:2px;right:7px;left:7px;height:1px;background:color-mix(in srgb,var(--border) 55%,transparent);content:""}.group-picker.group-create{padding:10px}.group-create form{display:grid;gap:8px}.group-create label{color:var(--text);font-size:12px;font-weight:650}.group-create input{width:100%;min-width:0;padding:7px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg);color:var(--text);font:inherit;font-size:12px}.group-create input:focus{border-color:var(--accent);outline:2px solid color-mix(in srgb,var(--accent) 20%,transparent);outline-offset:0}.group-create form>div{display:flex;justify-content:flex-end;gap:5px}.group-create form>div button{width:auto;min-height:29px;padding:5px 8px;border:1px solid var(--border);border-radius:6px;background:var(--surface)}.group-create form>div .group-create-button{border-color:var(--accent);background:var(--accent);color:var(--accent-contrast)}.group-create form>div .group-create-button:disabled{cursor:not-allowed;opacity:.45}
+@media(max-width:420px){.bulk-actions{align-items:stretch;flex-direction:column;gap:10px;padding:11px 14px}.bulk-selection-summary{justify-content:space-between;width:100%}.bulk-action-buttons{justify-content:flex-start;flex-wrap:wrap;gap:8px;width:auto}.bulk-action-buttons button{width:auto;padding-inline:8px}.bulk-action-buttons kbd{display:none}.group-picker{right:auto;left:0}.bulk-action-menu{right:0;left:auto}}
 /* The idle capture hint sits above the bottom bar without taking layout space.
    Give a last, expanded document a little extra scroll room so its editor does
    not end directly beneath that hint. */
@@ -196,8 +198,8 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
    rather than a border so the row can keep its 9px radius for the expanded
    card while the rule itself stays square across the full width. */
 .doc{border-radius:9px;position:relative;padding-bottom:7px;cursor:pointer;will-change:transform}
-.doc.reorderable .doc-row{padding-left:18px;cursor:pointer;touch-action:pan-y}
-.doc-drag-handle{position:absolute;top:7px;left:4px;width:14px;height:30px;opacity:0;cursor:grab;transition:opacity .12s}.doc-drag-handle::before{content:"";position:absolute;top:9px;left:4px;width:3px;height:3px;border-radius:50%;background:currentColor;box-shadow:5px 0 currentColor,0 6px currentColor,5px 6px currentColor,0 12px currentColor,5px 12px currentColor}.doc-row:hover .doc-drag-handle,.doc-row:focus-within .doc-drag-handle,.doc.dragging .doc-drag-handle{opacity:.5}.doc-drag-handle:hover{opacity:.82!important}.doc.dragging .doc-drag-handle:active{cursor:grabbing}
+.doc.reorderable .doc-row{padding-left:24px;cursor:pointer;touch-action:pan-y}
+.doc-drag-handle{position:absolute;top:7px;left:5px;width:14px;height:30px;opacity:0;cursor:grab;transition:opacity .12s}.doc-drag-handle::before{content:"";position:absolute;top:9px;left:4px;width:3px;height:3px;border-radius:50%;background:currentColor;box-shadow:5px 0 currentColor,0 6px currentColor,5px 6px currentColor,0 12px currentColor,5px 12px currentColor}.doc-row:hover .doc-drag-handle,.doc-row:focus-within .doc-drag-handle,.doc.dragging .doc-drag-handle{opacity:.5}.doc-drag-handle:hover{opacity:.82!important}.doc.dragging .doc-drag-handle:active{cursor:grabbing}
 .doc.dragging .doc-row{cursor:grabbing}
 .doc.dragging{opacity:1;z-index:2}
 .doc.dragging .doc-row{background:color-mix(in srgb,var(--hover) 82%,var(--bg-alt));outline:0;box-shadow:none}
@@ -224,8 +226,8 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
    bar as well — legible without shouting over the pinned and hover fills. */
 /* bottom offset carries the row's 7px separator padding so the bar stays
    centred on the row itself, not on the row plus its gutter. */
-.doc.is-active::before{content:"";position:absolute;left:0;top:7px;bottom:14px;width:2px;border-radius:0 2px 2px 0;background:var(--type-color,var(--accent));opacity:.5}
-.doc.is-active.expanded::before,.doc.is-active.previewing::before{display:none}
+.doc.is-selected::before{content:"";position:absolute;left:0;top:7px;bottom:14px;width:2px;border-radius:0 2px 2px 0;background:var(--type-color,var(--accent));opacity:.5}
+.doc.is-selected.expanded::before,.doc.is-selected.previewing::before{display:none}
 .doc.expanded .doc-row,.doc.expanded .doc-row:hover,.doc.previewing .doc-row,.doc.previewing .doc-row:hover{background:transparent}
 /* The expanded editor repeats these fields in its metadata controls, so leave the
    compact row summary for browsing and let the open detail speak for itself. */
@@ -299,7 +301,8 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .pin-btn.is-pinned{opacity:1;color:var(--accent)}
 .doc-actions{display:flex;gap:2px;flex:none;opacity:0;transition:opacity .12s}
 .doc-row:hover .doc-actions,.doc-row:focus-within .doc-actions{opacity:1}
-.doc{position:relative}.document-context-menu,.navigation-context-menu{z-index:30;display:grid;min-width:180px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow)}.document-context-menu{position:absolute;right:12px;top:42px}.navigation-context-menu{position:fixed}.document-context-menu button,.navigation-context-menu button{padding:6px 8px;font-size:12px;text-align:left}.document-context-menu button:hover,.navigation-context-menu button:hover,.navigation-context-menu button.active{background:var(--hover)}.navigation-context-menu .eyebrow{margin:5px 8px 3px}
+.doc{position:relative}.doc:has(.document-context-menu){z-index:60}.document-context-menu,.navigation-context-menu{z-index:100;display:grid;min-width:180px;padding:4px;background:var(--surface);border:1px solid var(--border);border-radius:9px;box-shadow:var(--shadow)}.document-context-menu{position:absolute;right:12px;top:42px}.navigation-context-menu{position:fixed}.document-context-menu button,.navigation-context-menu button{padding:6px 8px;font-size:12px;text-align:left}.document-context-menu button:hover,.navigation-context-menu button:hover,.navigation-context-menu button.active{background:var(--hover)}.navigation-context-menu .eyebrow{margin:5px 8px 3px}
+.context-group-menu{display:grid;margin:3px 0;padding:4px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)}.context-group-menu>span{padding:4px 8px 2px;color:var(--muted-soft);font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase}.context-group-menu button{padding-left:12px}.context-group-menu button:disabled{color:var(--muted-soft);cursor:default;opacity:.7}.context-group-menu button:disabled:hover{background:transparent}
 .settings-backdrop{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:var(--overlay)}.settings-panel{width:min(440px,calc(100vw - 32px));padding:18px;border-radius:12px;background:var(--surface);box-shadow:var(--shadow-lg)}.settings-panel header{display:flex;align-items:center;justify-content:space-between}.settings-panel h2{margin:0}.settings-panel h3{margin:18px 0 5px;font-size:13px}.settings-panel p{color:var(--muted);font-size:13px;line-height:1.5}.settings-panel .primary{margin-right:8px}.settings-status{margin-bottom:0}
 .settings-panel input{border:1px solid var(--border);border-radius:7px;padding:7px;background:var(--surface);color:var(--text)}.settings-timeout{display:block;margin:8px 0;font-size:12px}.settings-timeout input{width:52px;margin:0 4px}.lock-screen{min-height:100vh;display:grid;place-items:center;background:var(--bg)}.lock-screen form{display:grid;justify-items:center;gap:10px;width:260px}.lock-screen h1{font-size:18px}.lock-screen input{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:9px;background:var(--surface);color:var(--text)}.lock-screen p{margin:0;color:var(--danger);font-size:12px}
 .doc-type-inbox{--type-color:var(--type-inbox)}
@@ -333,6 +336,11 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .editor{max-width:760px;margin:0;padding:14px 20px 18px;background:transparent;border:0;border-top:1px solid var(--border-strong)}
 .editor-title-wrap{position:relative;display:flex;align-items:center;margin-bottom:16px}
 .editor-title{display:block;border:0;outline:0;background:transparent;font:600 26px/1.3 Georgia,serif;letter-spacing:-.01em;width:100%;padding:2px 0;color:inherit}
+/* Long, inactive titles use the same gentle reveal as the quick-capture
+   shorthand placeholder. Focus pauses it so typing retains native caret
+   tracking and never fights the user. */
+.editor-title.is-title-overflowing:not(:focus),.fs-title-wrap input.is-title-overflowing:not(:focus){animation:document-title-scroll 7s ease-in-out infinite alternate}
+@keyframes document-title-scroll{0%,18%{text-indent:0}82%,100%{text-indent:var(--title-scroll-distance)}}
 /* Says the heading is editable on hover, then gets out of the way the moment
    the caret lands in it. */
 .editor-title-pen{position:absolute;right:2px;opacity:0;pointer-events:none;color:var(--muted-soft);transition:opacity .12s}
@@ -356,7 +364,9 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .meta-bar{display:flex;flex-direction:column;gap:12px;min-width:0;margin-bottom:20px}
 .meta-chips{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .meta-chip{display:flex}
+.meta-details-toggle{display:inline-flex;align-items:center;gap:4px;width:max-content;margin:-4px 0 -4px;padding:3px 4px;color:var(--muted-soft);font-size:10px}.meta-details-toggle:hover{background:var(--bg-alt);color:var(--muted)}.meta-details-toggle svg{transition:transform .12s}.meta-details-toggle[aria-expanded="false"] svg{transform:rotate(-90deg)}
 .meta-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));align-items:start;gap:20px;min-width:0;padding-top:12px;border-top:1px solid var(--border-strong)}
+.meta-details>.meta-detail-column:only-child{grid-column:1/-1}
 .meta-detail-column{display:flex;flex-direction:column;align-items:stretch;gap:12px;min-width:0}
 .meta-details-link{grid-template-columns:minmax(0,1fr)}
 .meta-field{display:flex;flex-direction:column;align-items:flex-start;gap:4px;min-width:0}
@@ -448,6 +458,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .md-block-frozen{opacity:.7;padding:2px 6px}
 .md-editor{display:flex;flex-direction:column;gap:8px;margin:2px 0}
 .md-toolbar{display:flex;align-items:center;gap:1px;flex-wrap:wrap;padding:4px;border:1px solid var(--border);border-radius:8px;background:var(--bg-alt)}
+.md-toolbar-hint{margin-left:6px;color:var(--muted-soft);font-size:10px;white-space:nowrap}.md-toolbar-hint kbd{padding:1px 4px;border:1px solid var(--border);border-radius:4px;background:var(--surface);color:var(--muted);font:10px ui-monospace,SFMono-Regular,monospace}
 .md-toolbar-spacer{flex:1}
 .md-toolbar .icon-btn{color:var(--muted)}
 .md-toolbar .icon-btn:hover{color:var(--text)}
@@ -462,21 +473,21 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 /* A 1.5px dashed edge around a tinted fill put two busy surfaces inside a card
    that already has its own. A hairline solid edge over the card itself is
    quieter to sit next to; hover still supplies the "this is clickable" cue. */
-.md-preview-empty{display:flex;align-items:center;justify-content:flex-start;margin-top:18px;min-height:84px;padding:16px;border:1px solid color-mix(in srgb,var(--border) 55%,transparent);border-radius:10px;background:transparent;color:var(--muted);text-align:left;transition:background .14s ease,border-color .14s ease,color .14s ease}
+.md-preview-empty{display:flex;align-items:center;justify-content:flex-start;margin-top:18px;min-height:0;padding:14px 6px 10px;border:0;border-top:1px solid var(--border);border-radius:0;background:transparent;color:var(--muted);text-align:left;transition:color .14s ease}
 /* Hover is a half-strength --hover wash and a firmer hairline, no accent tint:
    the accent is a dark green that all but vanishes over a dark card, and at
    full strength the fill read as a second card stacked inside the first. The
    heading warming to --text carries the "this is clickable" cue instead. */
-.md-preview-empty:hover,.md-preview-empty:focus-visible{border-color:color-mix(in srgb,var(--border) 85%,transparent);background:color-mix(in srgb,var(--hover) 45%,transparent);color:var(--text)}
+.md-preview-empty:hover,.md-preview-empty:focus-visible{background:transparent;color:var(--text)}
 .md-preview-placeholder{display:flex;flex-direction:column;align-items:flex-start;gap:5px}
-.md-preview-placeholder strong{font-size:15px;font-weight:600;color:inherit}
-.md-preview-placeholder-hint{font-size:12.5px;color:var(--muted-soft);max-width:280px;transition:color .14s ease}
+.md-preview-placeholder strong{font-size:14px;font-weight:550;color:inherit}
+.md-preview-placeholder-hint{font-size:12px;color:var(--muted-soft);max-width:280px;transition:color .14s ease}.md-preview-placeholder-hint kbd{padding:1px 4px;border:1px solid var(--border);border-radius:4px;background:var(--bg-alt);font:10px ui-monospace,SFMono-Regular,monospace}
 .md-preview-empty:hover .md-preview-placeholder-hint,.md-preview-empty:focus-visible .md-preview-placeholder-hint{color:var(--muted)}
-.md-quick-start{display:flex;flex-wrap:wrap;justify-content:flex-start;gap:6px;margin-top:8px}
-.md-quick-start-chip{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border:1px solid color-mix(in srgb,var(--border) 70%,transparent);border-radius:999px;background:var(--bg-alt);color:var(--muted);font-size:12px;font-weight:500;transition:background .14s ease,border-color .14s ease,color .14s ease}
+.md-quick-start{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-start;gap:2px 4px;margin-top:7px;margin-left:-6px}
+.md-quick-start-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 6px;border:0;border-radius:5px;background:transparent;color:var(--muted);font-size:11.5px;font-weight:500;transition:background .14s ease,color .14s ease}
 /* The chips sit inside a card that is itself hovering, so they lift by one
    step only — a --hover fill and a solid hairline, not an accent outline. */
-.md-quick-start-chip:hover{background:var(--hover);border-color:var(--border);color:var(--text)}
+.md-quick-start-chip:hover{background:var(--hover);color:var(--text)}
 .md-quick-start-chip:focus-visible{outline:2px solid var(--focus-ring);outline-offset:2px}
 .md-prose{font-size:14px;line-height:1.65;color:inherit}
 .md-prose>*:first-child{margin-top:0}
@@ -492,7 +503,8 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .md-prose li:has(input[type="checkbox"]) input[type="checkbox"]{margin-left:-1.4em;margin-right:6px;vertical-align:middle;cursor:pointer}
 .md-prose blockquote{margin:.6em 0;padding:2px 14px;border-left:3px solid var(--border-strong);color:var(--muted)}
 .md-prose code{font:12.5px ui-monospace,SFMono-Regular,monospace;background:var(--chip-bg);border-radius:4px;padding:1px 5px}
-.md-prose pre{background:var(--bg-alt);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-x:auto;margin:.6em 0}
+.md-code-block{position:relative}.md-prose pre{background:var(--bg-alt);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow-x:auto;margin:.6em 0}.md-code-copy{position:absolute;z-index:1;top:8px;right:7px;display:grid;place-items:center;width:24px;height:24px;padding:4px;border:0;border-radius:5px;background:transparent;color:var(--muted);opacity:0;cursor:pointer}.md-code-block:hover .md-code-copy,.md-code-copy:focus-visible,.md-code-copy[data-copied="true"]{opacity:1}.md-code-copy:hover,.md-code-copy:focus-visible{color:var(--text);background:var(--hover)}.md-code-copy svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:1.75;stroke-linecap:round;stroke-linejoin:round}.md-code-copy[data-copied="true"]{width:58px;color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}.md-code-copy[data-copied="true"] svg{display:none}.md-code-copy[data-copied="true"]::after{content:"Copied";font-size:11px;font-weight:650}
+.md-prose .hljs-comment,.md-prose .hljs-quote{color:var(--muted)}.md-prose .hljs-keyword,.md-prose .hljs-selector-tag,.md-prose .hljs-built_in{color:var(--accent)}.md-prose .hljs-string,.md-prose .hljs-regexp,.md-prose .hljs-attribute{color:var(--priority-low)}.md-prose .hljs-number,.md-prose .hljs-literal,.md-prose .hljs-symbol{color:var(--priority-medium)}.md-prose .hljs-title,.md-prose .hljs-section,.md-prose .hljs-function{color:var(--text)}
 .md-prose pre code{background:none;padding:0}
 .md-prose a{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
 .md-prose strong{font-weight:700}
@@ -512,6 +524,7 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .fullscreen-editor{position:fixed;inset:0;background:var(--bg);z-index:30;display:flex;flex-direction:column}
 .fullscreen-editor .fs-topbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border-strong)}
 .fullscreen-editor .fs-title-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:0}
+.fullscreen-editor .fs-title-wrap input{min-width:0}
 .fullscreen-editor .fs-topbar input{flex:1;border:0;outline:0;background:transparent;font:500 20px Georgia,serif;padding:5px 0;color:inherit}
 .fs-title-wrap .editor-title-pen{right:2px}
 .fullscreen-editor .fs-title-placeholder{color:var(--muted);font-size:14px}
@@ -621,3 +634,5 @@ footer{margin-top:auto;display:grid;gap:2px;font-size:12px;color:var(--muted)}
 .quick-add-hint-label{margin-left:7px}
 .quick-add-input-wrap:focus-within{outline:none;border-color:var(--focus-ring)}.quick-add-input-wrap.is-hotkey-flash{animation:none}
 .settings-section-workspace .lock-card{display:none}.settings-section-lock .workspace-card{display:none}.settings-section-workspace h2,.settings-section-lock h2{font-size:0}.settings-section-workspace h2::after,.settings-section-lock h2::after{font:600 25px Georgia,serif}.settings-section-workspace h2::after{content:"Workspace"}.settings-section-lock h2::after{content:"Session lock"}.settings-section-workspace .settings-intro,.settings-section-lock .settings-intro{font-size:0}.settings-section-workspace .settings-intro::after,.settings-section-lock .settings-intro::after{display:block;font-size:13px;line-height:1.55}.settings-section-workspace .settings-intro::after{content:"Choose where Sonata stores your notes, or refresh its local search index."}.settings-section-lock .settings-intro::after{content:"Protect Sonata after inactivity. Your Markdown files remain unencrypted and portable."}
+.md-code-copy[data-copied="true"]{border:1px solid var(--border);background:var(--bg-alt)}
+.md-code-copy{box-sizing:border-box;line-height:1}

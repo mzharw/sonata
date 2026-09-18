@@ -35,6 +35,18 @@ describe("workspace selection", () => {
   });
 });
 
+describe("group ordering", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("persists the ordered documents for one group", async () => {
+    await native.reorderGroupDocuments("project", ["two", "one"]);
+    expect(invoke).toHaveBeenCalledWith("reorder_group_documents", {
+      groupId: "project",
+      documentIds: ["two", "one"],
+    });
+  });
+});
+
 describe("attachment selection", () => {
   beforeEach(() => vi.resetAllMocks());
 

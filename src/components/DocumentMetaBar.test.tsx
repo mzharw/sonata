@@ -94,6 +94,16 @@ describe("DocumentMetaBar compact metadata", () => {
     expect(screen.getByRole("button", { name: "Choose reminder" }).textContent).toContain("Add reminder");
     expect(screen.queryByText("No reminder")).toBeNull();
   });
+
+  it("can collapse and reopen additional metadata", () => {
+    mount("task", {}, () => {});
+    const toggle = screen.getByRole("button", { name: "Hide additional details" });
+    fireEvent.click(toggle);
+    expect(screen.getByRole("button", { name: "Show additional details" })).toBeTruthy();
+    expect(screen.queryByText("Due date")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Show additional details" }));
+    expect(screen.getByText("Due date")).toBeTruthy();
+  });
 });
 
 describe("the type pill", () => {

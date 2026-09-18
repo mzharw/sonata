@@ -27,14 +27,14 @@ function ExternalToggleHarness({ value, onChange }: { value: string; onChange: (
 describe("MarkdownEditor", () => {
   it("shows the placeholder in preview mode when empty", () => {
     setup("");
-    expect(screen.getByText("This note is empty")).toBeTruthy();
-    expect(screen.getByText("Click to write…")).toBeTruthy();
+    expect(screen.getByText("Start writing…")).toBeTruthy();
+    expect(document.querySelector(".md-preview-placeholder-hint")?.textContent).toContain("Markdown supported · Type / for commands");
     expect(screen.queryByLabelText("Note body")).toBeNull();
   });
 
   it("treats whitespace-only content as empty too, not as renderable markdown", () => {
     setup("   \n\n  ");
-    expect(screen.getByText("This note is empty")).toBeTruthy();
+    expect(screen.getByText("Start writing…")).toBeTruthy();
     expect(document.querySelector(".md-prose")).toBeNull();
   });
 
@@ -94,6 +94,8 @@ describe("MarkdownEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit Note body" }));
     expect(screen.getByLabelText("Note body")).toBeTruthy();
     expect(screen.getByRole("toolbar", { name: "Formatting" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Task list" })).toBeTruthy();
+    expect(screen.getByRole("toolbar", { name: "Formatting" }).textContent).toContain("Type / for commands");
   });
 
   it("switches back to preview on blur", () => {

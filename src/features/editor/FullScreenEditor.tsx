@@ -5,6 +5,7 @@ import { useDocumentEditor } from "../../hooks/useDocumentEditor";
 import { DocumentMetaBar } from "../../components/DocumentMetaBar";
 import { MarkdownEditor, type MarkdownEditorHandle } from "../../components/MarkdownEditor";
 import { AttachmentButton } from "../../components/AttachmentButton";
+import { ScrollingTitleInput } from "../../components/ScrollingTitleInput";
 import { attachToDocument, chooseAndImportAttachment, importClipboardImage } from "../../lib/attachments";
 import { useAttachmentUrls } from "../../hooks/useAttachmentUrls";
 import { useTypeConversion } from "../../hooks/useTypeConversion";
@@ -137,7 +138,7 @@ export function FullScreenEditor({ id }: { id: string }) {
         <button className="icon-btn" aria-label="Back to list" onClick={() => requestLeave()}><IconArrowLeft /></button>
         {full ? (
           <div className="fs-title-wrap">
-            <input aria-label="Title" value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} />
+            <ScrollingTitleInput value={full.title} onChange={(e) => setFull({ ...full, title: e.target.value })} />
             <IconPencilLine className="editor-title-pen" size={15} aria-hidden="true" />
           </div>
         ) : (
@@ -160,7 +161,7 @@ export function FullScreenEditor({ id }: { id: string }) {
             <MarkdownEditor
               ref={bodyEditorRef}
               ariaLabel="Note body"
-              placeholder="Click to write in Markdown…"
+              placeholder={full.type === "task" ? "Add details…" : full.type === "idea" ? "Develop this idea…" : full.type === "bookmark" ? "Add context or notes…" : full.type === "inbox" ? "Write something…" : "Start writing…"}
               value={full.body}
               onChange={(body) => setFull({ ...full, body })}
               onRawChange={setRawActive}

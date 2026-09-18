@@ -180,7 +180,7 @@ export const COMMANDS: Command[] = [
   { id: "bullet", label: "Bullet list", icon: IconListBullets, toolbar: true, hotkey: { code: "Digit8", shift: true }, hotkeyLabel: `${MOD_KEY}+Shift+8`, example: "- item", keywords: ["unordered", "list"], apply: (v, s) => toggleLinePrefix(v, s, () => "- ", /^[-*]\s/) },
   { id: "numbered", label: "Numbered list", icon: IconListNumbers, toolbar: true, hotkey: { code: "Digit7", shift: true }, hotkeyLabel: `${MOD_KEY}+Shift+7`, example: "1. item", keywords: ["ordered", "list"], apply: (v, s) => toggleLinePrefix(v, s, (i) => `${i + 1}. `, /^\d+\.\s/) },
   { id: "quote", label: "Quote", icon: IconQuote, toolbar: true, hotkey: { code: "Digit9", shift: true }, hotkeyLabel: `${MOD_KEY}+Shift+9`, example: "> text", keywords: ["blockquote"], apply: (v, s) => toggleLinePrefix(v, s, () => "> ", /^>\s/) },
-  { id: "task", label: "Task list", icon: IconCheckSquare, example: "- [ ] item", keywords: ["checkbox", "todo", "checklist"], apply: toggleTaskItem },
+  { id: "task", label: "Task list", icon: IconCheckSquare, toolbar: true, example: "- [ ] item", keywords: ["checkbox", "todo", "checklist"], apply: toggleTaskItem },
   { id: "codeblock", label: "Code block", icon: IconCodeBlock, hotkey: { key: "c", shift: true }, hotkeyLabel: `${MOD_KEY}+Shift+C`, example: "```\ncode\n```", keywords: ["fence", "snippet"], apply: insertCodeBlock },
   { id: "hr", label: "Divider", icon: IconMinus, example: "---", keywords: ["horizontal rule", "separator", "line"], apply: insertHorizontalRule },
   { id: "table", label: "Table", icon: IconTable, example: "| a | b |", keywords: ["grid"], apply: insertTable },
