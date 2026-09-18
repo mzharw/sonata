@@ -8,7 +8,7 @@ import { native } from "../lib/native";
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 function setup(value = "", onChange = vi.fn()) {
-  render(<MarkdownEditor value={value} onChange={onChange} ariaLabel="Note body" placeholder="Click to write…" />);
+  render(<MarkdownEditor value={value} onChange={onChange} ariaLabel="Note body" placeholder="Start writing…" />);
   return { onChange };
 }
 
@@ -19,7 +19,7 @@ function ExternalToggleHarness({ value, onChange }: { value: string; onChange: (
   return (
     <>
       <button aria-label={raw ? "Back to block view" : "Edit whole document as text"} onClick={() => ref.current?.toggleRaw()} />
-      <MarkdownEditor ref={ref} value={value} onChange={onChange} ariaLabel="Note body" placeholder="Click to write…" onRawChange={setRaw} />
+      <MarkdownEditor ref={ref} value={value} onChange={onChange} ariaLabel="Note body" placeholder="Start writing…" onRawChange={setRaw} />
     </>
   );
 }

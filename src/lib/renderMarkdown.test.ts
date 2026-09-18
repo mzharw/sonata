@@ -20,10 +20,11 @@ describe("renderMarkdownPreview", () => {
 
   it("adds a copy button to fenced code blocks", () => {
     const html = renderMarkdownPreview("```ts\nconst answer = 42;\n```");
+    const text = new DOMParser().parseFromString(html, "text/html").body.textContent ?? "";
 
     expect(html).toContain('data-copy-code');
     expect(html).toContain('aria-label="Copy code"');
-    expect(html).toContain("const answer = 42;");
+    expect(text).toContain("const answer = 42;");
   });
 
   it("highlights fenced blocks with a supported language", () => {
