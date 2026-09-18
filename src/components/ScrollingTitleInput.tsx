@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState, type ChangeEventHandler, type FocusEventHandler } from "react";
+import { useLayoutEffect, useRef, useState, type ChangeEventHandler, type CSSProperties, type FocusEventHandler } from "react";
 
 /**
  * Keeps an overlong title readable while it is idle. Native inputs already
@@ -33,7 +33,7 @@ export function ScrollingTitleInput({
     <input
       ref={inputRef}
       className={`${className ?? ""}${scrollDistance ? " is-title-overflowing" : ""}`}
-      style={{ "--title-scroll-distance": `-${scrollDistance}px` }}
+      style={{ "--title-scroll-distance": `-${scrollDistance}px` } as CSSProperties}
       aria-label="Title"
       value={value}
       onChange={onChange}
