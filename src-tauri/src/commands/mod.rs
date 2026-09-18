@@ -867,6 +867,27 @@ pub fn create_group(
         document_ids: group.document_ids,
     })
 }
+
+#[tauri::command]
+pub fn rename_group(group_id: String, name: String, state: State<AppState>) -> Result<()> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(SonataError::InvalidMetadata(
+            "group name cannot be empty".into(),
+        ));
+    }
+    let mut guard = session(&state)?;
+    let workspace = &mut guard.as_mut().unwrap().workspace;
+    let group = workspace
+        .config
+        .groups
+        .iter_mut()
+        .find(|group| group.id == group_id)
+        .ok_or_else(|| SonataError::WorkspaceUnavailable("group no longer exists".into()))?;
+    group.name = name.to_string();
+    workspace.save_config()
+}
+
 #[tauri::command]
 pub fn reorder_group_documents(
     group_id: String,

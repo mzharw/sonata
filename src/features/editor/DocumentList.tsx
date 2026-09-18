@@ -45,6 +45,8 @@ export function DocumentList({ search }: { search: string }) {
   const [bulkMenuOpen, setBulkMenuOpen] = useState(false);
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [renamingGroupId, setRenamingGroupId] = useState<string>();
+  const [renamingGroupName, setRenamingGroupName] = useState("");
   const groupMenuRef = useRef<HTMLSpanElement>(null);
   const pointerDrag = useRef<{ id: string; groupId?: string; startY: number; active: boolean; order: DocumentSummary[]; targetId?: string; previewFrame?: number; x: number; y: number } | undefined>(undefined);
   const { filters } = ui;
@@ -208,6 +210,27 @@ export function DocumentList({ search }: { search: string }) {
     setNewGroupName("");
   };
 
+  const renameGroup = (groupId: string, name: string) => {
+    const cleanName = name.trim().replace(/^#/, "");
+    if (!cleanName) return;
+    void native.renameGroup(groupId, cleanName)
+      .then(() => { qc.invalidateQueries({ queryKey: ["groups"] }); setRenamingGroupId(undefined); setRenamingGroupName(""); ui.closeContextMenu(); ui.showToast({ message: `Renamed group to “${cleanName}”` }); })
+      .catch((error: unknown) => { console.error("Couldn't rename group", error); ui.showToast({ message: "Couldn't rename group" }); });
+  };
+
+  const ungroupAll = (groupId: string, name: string) => {
+    const group = groups.data?.find((candidate) => candidate.id === groupId);
+    if (!group) return;
+    ui.closeContextMenu();
+    ui.requestConfirm({
+      message: `Remove all ${group.documentIds.length} documents from “${name}”?`,
+      confirmLabel: "Ungroup all",
+      onConfirm: () => void native.removeDocumentsFromGroup(group.documentIds)
+        .then(() => { qc.invalidateQueries({ queryKey: ["groups"] }); ui.showToast({ message: `Ungrouped ${group.documentIds.length} documents` }); })
+        .catch((error: unknown) => { console.error("Couldn't ungroup documents", error); ui.showToast({ message: "Couldn't ungroup documents" }); }),
+    });
+  };
+
   const assignToGroup = (groupId: string, documentIds: string[]) => {
     void native.addDocumentsToGroup(groupId, documentIds)
       .then(() => { qc.invalidateQueries({ queryKey: ["groups"] }); clearBulkSelection(); setGroupMenuOpen(false); })
@@ -280,6 +303,15 @@ export function DocumentList({ search }: { search: string }) {
     document.addEventListener("pointerdown", closeOnOutsidePointerDown);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
   }, [groupMenuOpen]);
+
+  useEffect(() => {
+    if (ui.contextMenu?.kind !== "group") return;
+    const closeOnOutsidePointerDown = (event: globalThis.PointerEvent) => {
+      if (!(event.target instanceof Element) || !event.target.closest(".group-context-menu")) ui.closeContextMenu();
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointerDown);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointerDown);
+  }, [ui.contextMenu, ui]);
 
   useEffect(() => {
     if (!groupMenuOpen) {
@@ -429,6 +461,16 @@ export function DocumentList({ search }: { search: string }) {
       return;
     }
     if (event.key === "Escape") {
+      if (ui.contextMenu?.kind === "group") {
+        event.preventDefault();
+        if (renamingGroupId) {
+          setRenamingGroupId(undefined);
+          setRenamingGroupName("");
+          return;
+        }
+        ui.closeContextMenu();
+        return;
+      }
       if (selectionMode) {
         event.preventDefault();
         if (creatingGroup) {
@@ -539,9 +581,19 @@ export function DocumentList({ search }: { search: string }) {
       }}
     >
       {groupedDocs.sections.map((section) => <li key={section.id} className="document-group">
-        <button type="button" className="document-group-heading" aria-expanded={!collapsedGroups.has(section.id)} onClick={() => setCollapsedGroups((current) => { const next = new Set(current); if (next.has(section.id)) next.delete(section.id); else next.add(section.id); return next; })}>
+        <button type="button" className="document-group-heading" aria-expanded={!collapsedGroups.has(section.id)} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); ui.openContextMenu({ kind: "group", groupId: section.id }); }} onClick={() => setCollapsedGroups((current) => { const next = new Set(current); if (next.has(section.id)) next.delete(section.id); else next.add(section.id); return next; })}>
           {collapsedGroups.has(section.id) ? <IconChevronRight size={15} /> : <IconChevronDown size={15} />}<b>{section.name}</b><small>{section.documents.length}</small>
         </button>
+        {ui.contextMenu?.kind === "group" && ui.contextMenu.groupId === section.id && <div className="group-context-menu" role="menu" aria-label={`${section.name} actions`} onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); }}>
+          {renamingGroupId === section.id ? <form className="group-rename-form" onSubmit={(event) => { event.preventDefault(); renameGroup(section.id, renamingGroupName); }}>
+            <label htmlFor={`rename-group-${section.id}`}>Rename group</label>
+            <input id={`rename-group-${section.id}`} value={renamingGroupName} autoFocus onChange={(event) => setRenamingGroupName(event.target.value)} />
+            <div><button type="button" onClick={() => { setRenamingGroupId(undefined); setRenamingGroupName(""); }}>Cancel</button><button type="submit" className="group-rename-submit" disabled={!renamingGroupName.trim()}>Rename</button></div>
+          </form> : <>
+            <button type="button" role="menuitem" onClick={() => { setRenamingGroupId(section.id); setRenamingGroupName(section.name); }}>Rename group</button>
+            <button type="button" role="menuitem" onClick={() => ungroupAll(section.id, section.name)}>Ungroup all</button>
+          </>}
+        </div>}
         {!collapsedGroups.has(section.id) && <ul className="document-group-items">{section.documents.map((doc) => renderRow(doc, section.id))}</ul>}
       </li>)}
       {groupedDocs.ungrouped.length > 0 && groupedDocs.sections.length > 0 && <li className="document-group ungrouped"><div className="document-group-heading static"><span /><b>Ungrouped</b><small>{groupedDocs.ungrouped.length}</small></div><ul className="document-group-items">{groupedDocs.ungrouped.map((doc) => renderRow(doc))}</ul></li>}

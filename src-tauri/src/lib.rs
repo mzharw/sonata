@@ -122,6 +122,7 @@ pub fn run() {
             commands::add_documents_to_group,
             commands::remove_documents_from_group,
             commands::create_group,
+            commands::rename_group,
             commands::reorder_group_documents,
             commands::list_children,
             commands::list_backlinks,

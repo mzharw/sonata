@@ -7,7 +7,7 @@ import { native } from "../../lib/native";
 import { useUi } from "../../stores/ui";
 import type { DocumentSummary } from "../../types/domain";
 
-vi.mock("../../lib/native", () => ({ native: { listDocuments: vi.fn(), readDocument: vi.fn(), updateDocument: vi.fn(), reorderDocuments: vi.fn(), reorderGroupDocuments: vi.fn(), archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), restoreFromTrash: vi.fn(), acknowledgeDocumentAttention: vi.fn(), groups: vi.fn(), tags: vi.fn(), addDocumentsToGroup: vi.fn(), removeDocumentsFromGroup: vi.fn(), createGroup: vi.fn() } }));
+vi.mock("../../lib/native", () => ({ native: { listDocuments: vi.fn(), readDocument: vi.fn(), updateDocument: vi.fn(), reorderDocuments: vi.fn(), reorderGroupDocuments: vi.fn(), archive: vi.fn(), unarchive: vi.fn(), trash: vi.fn(), restoreFromTrash: vi.fn(), acknowledgeDocumentAttention: vi.fn(), groups: vi.fn(), tags: vi.fn(), addDocumentsToGroup: vi.fn(), removeDocumentsFromGroup: vi.fn(), createGroup: vi.fn(), renameGroup: vi.fn() } }));
 
 const summaryDocument = (id: string, title: string): DocumentSummary => ({
   id, title, path: `notes/${id}.md`, type: "note", tags: [], created: "", updated: "", archived: false, pinned: false, childCount: 0, completedChildCount: 0,
@@ -159,6 +159,26 @@ it("shows loose, collapsible group sections and assigns selected rows", async ()
   fireEvent.click(screen.getByRole("button", { name: "Group" }));
   fireEvent.click(screen.getByRole("menu", { name: "Group selected documents" }).querySelector("button")!);
   await waitFor(() => expect(native.addDocumentsToGroup).toHaveBeenCalledWith("project", ["two"]));
+});
+
+it("offers rename and ungroup actions from a group header context menu", async () => {
+  vi.mocked(native.groups).mockResolvedValue([{ id: "project", name: "Project Aurora", documentIds: ["one", "two"] }]);
+  vi.mocked(native.renameGroup).mockResolvedValue();
+  vi.mocked(native.removeDocumentsFromGroup).mockResolvedValue();
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><DocumentList search="" /></QueryClientProvider>);
+  await waitFor(() => expect(screen.getByRole("button", { name: /Project Aurora/ })).toBeTruthy());
+
+  fireEvent.contextMenu(screen.getByRole("button", { name: /Project Aurora/ }));
+  expect(screen.getByRole("menu", { name: "Project Aurora actions" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Rename group" }));
+  fireEvent.change(screen.getByLabelText("Rename group"), { target: { value: "Project renamed" } });
+  fireEvent.click(screen.getByRole("button", { name: "Rename" }));
+  await waitFor(() => expect(native.renameGroup).toHaveBeenCalledWith("project", "Project renamed"));
+
+  fireEvent.contextMenu(screen.getByRole("button", { name: /Project Aurora/ }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "Ungroup all" }));
+  useUi.getState().confirm?.onConfirm();
+  await waitFor(() => expect(native.removeDocumentsFromGroup).toHaveBeenCalledWith(["one", "two"]));
 });
 
 it("removes a document from its group without changing its tags", async () => {

@@ -5,6 +5,7 @@ export type View = "inbox" | "all" | "today" | "upcoming" | "tasks" | "notes" | 
 export interface ConfirmRequest { message: string; confirmLabel: string; onConfirm: () => void }
 export type ContextMenu =
   | { kind: "document"; documentId: string }
+  | { kind: "group"; groupId: string }
   | { kind: "navigation"; x: number; y: number };
 /** Refinements layered on top of whichever view is selected. */
 export interface Filters { status?: TaskStatus; priority?: Priority; tags?: string[]; sort: SortOrder }

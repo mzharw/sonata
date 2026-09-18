@@ -47,6 +47,15 @@ describe("group ordering", () => {
   });
 });
 
+describe("group management", () => {
+  beforeEach(() => vi.resetAllMocks());
+
+  it("renames a group through the registered backend command", async () => {
+    await native.renameGroup("project", "Renamed project");
+    expect(invoke).toHaveBeenCalledWith("rename_group", { groupId: "project", name: "Renamed project" });
+  });
+});
+
 describe("attachment selection", () => {
   beforeEach(() => vi.resetAllMocks());
 

@@ -73,6 +73,7 @@ export const native = {
   addDocumentsToGroup: (groupId: string, documentIds: string[]) => invoke<void>("add_documents_to_group", { groupId, documentIds }),
   removeDocumentsFromGroup: (documentIds: string[]) => invoke<void>("remove_documents_from_group", { documentIds }),
   createGroup: (name: string, documentIds: string[]) => invoke<DocumentGroup>("create_group", { name, documentIds }),
+  renameGroup: (groupId: string, name: string) => invoke<void>("rename_group", { groupId, name }),
   reorderGroupDocuments: (groupId: string, documentIds: string[]) => invoke<void>("reorder_group_documents", { groupId, documentIds }),
   children: (id: string) => invoke<DocumentSummary[]>("list_children", { id }),
   backlinks: (id: string) => invoke<DocumentSummary[]>("list_backlinks", { id }),
